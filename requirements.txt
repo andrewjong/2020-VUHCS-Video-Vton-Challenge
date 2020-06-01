@@ -3,8 +3,8 @@ decorator==4.4.2
 future==0.18.2
 imageio==2.8.0
 joblib==0.14.1
-kiwisolver==1.2.0
-matplotlib==3.2.1
+kiwisolver==1.1.0
+matplotlib==3.0.1
 networkx==2.4
 numpy==1.18.4
 Pillow==7.1.2
@@ -12,10 +12,10 @@ protobuf==3.12.2
 pyparsing==2.4.7
 python-dateutil==2.8.1
 PyWavelets==1.1.1
-scikit-image==0.17.2
+scikit-image==0.15.0
 scipy==1.4.1
 six==1.15.0
 tensorboardX==2.0
-tifffile==2020.5.30
-torch==1.5.0+cu92
-torchvision==0.6.0+cu92
+tifffile==2019.7.26.2
+torch==1.5.0
+torchvision==0.6.0

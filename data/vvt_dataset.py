@@ -169,7 +169,8 @@ class VVTDataset(data.Dataset):
                 pose_data = pose_data.reshape((-1, 3))
 
             point_num = pose_data.shape[0]  # how many pose joints
-            assert point_num == 18, "should be 18 pose joints for guidedpix2pix"
+            print("point num:", point_num)
+            #assert point_num == 17, "should be 18 pose joints for guidedpix2pix"
             # construct an N-channel map tensor with -1
             pose_map = torch.zeros(point_num, self.img_h, self.img_w) - 1
 
@@ -183,7 +184,7 @@ class VVTDataset(data.Dataset):
 
             # add padding to the w/ h/
             pose_map = self._pad_width_up(pose_map, value=-1)# make the image 256x256
-            assert all(i == -1 or i == 1 for i in torch.unique(pose_map)), f"{torch.unique(pose_map)}"
+            #assert all(i == -1 or i == 1 for i in torch.unique(pose_map)), f"{torch.unique(pose_map)}"
             pose_maps.append(pose_map)
 
         return pose_maps
@@ -196,7 +197,7 @@ class VVTDataset(data.Dataset):
 
         files = os.listdir(folder)
         person_image_name = [f for f in files if f.endswith(".png")][0]
-        assert person_image_name.endswith(".png"), f"person images should have .png extensions: {person_image_name}"
+        #assert person_image_name.endswith(".png"), f"person images should have .png extensions: {person_image_name}"
         return osp.join(folder, person_image_name)
 
     def _get_input_cloth_path_from_index(self, index):
@@ -210,7 +211,7 @@ class VVTDataset(data.Dataset):
         print(files)
         person_image_name = [f for f in files if f.endswith(".jpg")][0]
         print(person_image_name)
-        assert person_image_name.endswith(".jpg"), f"person images should have .png extensions: {person_image_name}"
+        #assert person_image_name.endswith(".jpg"), f"person images should have .png extensions: {person_image_name}"
         return osp.join(folder, person_image_name)
 
     def _pad_width_up(self, tensor, value=0):
@@ -360,7 +361,7 @@ class VVTDataset(data.Dataset):
             pose_target = self.get_input_person_pose(index, target_width=256)  # (18, 256, 256)
         except IndexError as e:
             print(e.__traceback__)
-            print(f"[WARNING]: no pose found {self.keypoints[index]}")
+            #print(f"[WARNING]: no pose found {self.keypoints[index]}")
             pose_target = torch.zeros(18, 256, 256)
 
         image_target = self.get_target_frame(index)
@@ -371,10 +372,10 @@ class VVTDataset(data.Dataset):
         cloth_masks = self.generate_cloth_mask(image_target, schp)
         body_shapes = self.generate_body_shape(image_target, schp)
 
-        assert image.shape[-2:] == pose_target[0].shape[
-                                   -2:], f"hxw don't match: image {image.shape}, pose {pose_target.shape}"
-        assert image.shape[-2:] == image_target[0].shape[
-                                   -2:], f"hxw don't match: image {image.shape}, pose {pose_target.shape}"
+        #assert image.shape[-2:] == pose_target[0].shape[
+                                   #-2:], f"hxw don't match: image {image.shape}, pose {pose_target.shape}"
+        #assert image.shape[-2:] == image_target[0].shape[
+                                   #-2:], f"hxw don't match: image {image.shape}, pose {pose_target.shape}"
 
         # random fliping
         # if (self.opt.isTrain):
