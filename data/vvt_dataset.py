@@ -47,7 +47,7 @@ class VVTDataset(data.Dataset):
         self._schp_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "cloth")
         self._vibe_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "VIBE")
 
-        self._keypoints = glob(f"{self._keypoints_dir}/**/*.json")
+        self._keypoints = glob(f'{self._keypoints_dir}/**/*.json')
 
         #print(type(self.keypoints), len(self.keypoints))
         self.keypoints = []
