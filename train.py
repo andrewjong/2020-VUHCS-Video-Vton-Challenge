@@ -8,6 +8,8 @@ import os
 import time
 from cp_dataset import CPDataset, CPDataLoader
 from networks import GMM, UnetGenerator, VGGLoss, load_checkpoint, save_checkpoint
+from vibe_dataset import VIBEDatset
+from schp import SCHPDatset
 
 from tensorboardX import SummaryWriter
 from visualization import board_add_image, board_add_images
@@ -41,10 +43,12 @@ def get_opt():
     opt = parser.parse_args()
     return opt
 
-def train_gmm(opt, train_loader, model, board):
+def train_gmm(opt, dataloaders, model, board):
     model.cuda()
     model.train()
 
+    # unravel dataloaders
+    train_loader, vibe_loader, schp_loader = dataloaders
     # criterion
     criterionL1 = nn.L1Loss()
     
@@ -55,40 +59,55 @@ def train_gmm(opt, train_loader, model, board):
     
     for step in range(opt.keep_step + opt.decay_step):
         iter_start_time = time.time()
-        inputs = train_loader.next_batch()
-            
-        im = inputs['image'].cuda()
-        im_pose = inputs['pose_image'].cuda()
-        im_h = inputs['head'].cuda()
-        shape = inputs['shape'].cuda()
-        agnostic = inputs['agnostic'].cuda()
-        c = inputs['cloth'].cuda()
-        cm = inputs['cloth_mask'].cuda()
-        im_c =  inputs['parse_cloth'].cuda()
-        im_g = inputs['grid_image'].cuda()
-            
-        grid, theta = model(agnostic, c)
-        warped_cloth = F.grid_sample(c, grid, padding_mode='border')
-        warped_mask = F.grid_sample(cm, grid, padding_mode='zeros')
-        warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
+        vibe_inputs = vibe_loader.next_batch()
 
-        visuals = [ [im_h, shape, im_pose], 
-                   [c, warped_cloth, im_c], 
-                   [warped_grid, (warped_cloth+im)*0.5, im]]
-        
-        loss = criterionL1(warped_cloth, im_c)    
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-            
-        if (step+1) % opt.display_count == 0:
-            board_add_images(board, 'combine', visuals, step+1)
-            board.add_scalar('metric', loss.item(), step+1)
-            t = time.time() - iter_start_time
-            print('step: %8d, time: %.3f, loss: %4f' % (step+1, t, loss.item()), flush=True)
+        frame_ids, pose_params, body_shape_params, joints_3d = vibe_inputs
+        for frame in frame_ids:
+            train_inputs = train_loader.next_batch()
 
-        if (step+1) % opt.save_count == 0:
-            save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'step_%06d.pth' % (step+1)))
+            schp_input = schp_loader.next_batch()
+
+
+
+
+            im = train_inputs['image'].cuda()
+            im_pose = train_inputs['pose_image'].cuda()
+            im_h = train_inputs['head'].cuda()
+            shape = train_inputs['shape'].cuda()
+            agnostic = train_inputs['agnostic'].cuda()
+            c = train_inputs['cloth'].cuda()
+            cm = train_inputs['cloth_mask'].cuda()
+            im_c = train_inputs['parse_cloth'].cuda()
+            im_g = train_inputs['grid_image'].cuda()
+
+            grid, theta = model(agnostic, c)
+            print(grid, theta)
+            print(type(grid), type(theta))
+
+            warped_cloth = F.grid_sample(c, grid, padding_mode='border')
+            warped_mask = F.grid_sample(cm, grid, padding_mode='zeros')
+            warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
+
+            print("finished warp")
+            visuals = [ [im_h, shape, im_pose],
+                       [c, warped_cloth, im_c],
+                       [warped_grid, (warped_cloth+im)*0.5, im]]
+            print("about to print sizes")
+            print(warped_cloth.size())
+            print(im_c.size())
+            loss = criterionL1(warped_cloth, im_c)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if (step+1) % opt.display_count == 0:
+                board_add_images(board, 'combine', visuals, step+1)
+                board.add_scalar('metric', loss.item(), step+1)
+                t = time.time() - iter_start_time
+                print('step: %8d, time: %.3f, loss: %4f' % (step+1, t, loss.item()), flush=True)
+
+            if (step+1) % opt.save_count == 0:
+                save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'step_%06d.pth' % (step+1)))
 
 
 def train_tom(opt, train_loader, model, board):
@@ -117,7 +136,7 @@ def train_tom(opt, train_loader, model, board):
         agnostic = inputs['agnostic'].cuda()
         c = inputs['cloth'].cuda()
         cm = inputs['cloth_mask'].cuda()
-        
+
         outputs = model(torch.cat([agnostic, c],1))
         p_rendered, m_composite = torch.split(outputs, 3,1)
         p_rendered = F.tanh(p_rendered)
@@ -159,9 +178,20 @@ def main():
    
     # create dataset 
     train_dataset = CPDataset(opt)
+    vibe_dataset = VIBEDatset(opt)
+    schp_dataset = SCHPDatset(opt)
 
     # create dataloader
+    dataloaders = []
     train_loader = CPDataLoader(opt, train_dataset)
+    vibe_loader = CPDataLoader(opt, vibe_dataset)
+    schp_loader = CPDataLoader(opt, schp_dataset)
+    dataloaders.append(train_loader)
+    dataloaders.append(vibe_loader)
+    dataloaders.append(schp_loader)
+
+
+
 
     # visualization
     if not os.path.exists(opt.tensorboard_dir):
@@ -173,7 +203,8 @@ def main():
         model = GMM(opt)
         if not opt.checkpoint =='' and os.path.exists(opt.checkpoint):
             load_checkpoint(model, opt.checkpoint)
-        train_gmm(opt, train_loader, model, board)
+        #train_gmm(opt, train_loader, model, board)
+        train_gmm()
         save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'gmm_final.pth'))
     elif opt.stage == 'TOM':
         model = UnetGenerator(25, 4, 6, ngf=64, norm_layer=nn.InstanceNorm2d)

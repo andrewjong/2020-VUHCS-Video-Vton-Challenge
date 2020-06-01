@@ -84,16 +84,19 @@ class FeatureL2Norm(torch.nn.Module):
 class FeatureCorrelation(nn.Module):
     def __init__(self):
         super(FeatureCorrelation, self).__init__()
-    
-    def forward(self, feature_A, feature_B):
-        b,c,h,w = feature_A.size()
+        self.model = nn.Sequential(nn.Conv2d(1024, 256, 3, 1, 1),
+                      nn.LeakyReLU(0.2, True),
+                      nn.BatchNorm2d(256))
+    def forward(self, concat_feat):
+        return self.model(concat_feat)
+        """b,c,h,w = feature_A.size()
         # reshape features for matrix multiplication
         feature_A = feature_A.transpose(2,3).contiguous().view(b,c,h*w)
         feature_B = feature_B.view(b,c,h*w).transpose(1,2)
         # perform matrix mult.
         feature_mul = torch.bmm(feature_B,feature_A)
         correlation_tensor = feature_mul.view(b,h,w,h*w).transpose(2,3).transpose(1,2)
-        return correlation_tensor
+        return correlation_tensor"""
     
 class FeatureRegression(nn.Module):
     def __init__(self, input_nc=512,output_dim=6, use_cuda=True):
@@ -112,7 +115,7 @@ class FeatureRegression(nn.Module):
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
         )
-        self.linear = nn.Linear(64 * 4 * 3, output_dim)
+        self.linear = nn.Linear(64 * 4 * 4, output_dim)
         self.tanh = nn.Tanh()
         if use_cuda:
             self.conv.cuda()
@@ -120,8 +123,13 @@ class FeatureRegression(nn.Module):
             self.tanh.cuda()
 
     def forward(self, x):
+        print(x.size())
         x = self.conv(x)
-        x = x.view(x.size(0), -1)
+        print(x.size())
+        x = x.contiguous().view(x.size(0), -1)
+
+        #x = torch.reshape(x, (x.size(0), -1))
+        print(x.size())
         x = self.linear(x)
         x = self.tanh(x)
         return x
@@ -405,20 +413,28 @@ class GMM(nn.Module):
     """
     def __init__(self, opt):
         super(GMM, self).__init__()
-        self.extractionA = FeatureExtraction(22, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d) 
+        input_c = 25
+        if opt.vibe:
+            input_c = 28
+        self.extractionA = FeatureExtraction(input_c, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d)
         self.extractionB = FeatureExtraction(3, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d)
         self.l2norm = FeatureL2Norm()
         self.correlation = FeatureCorrelation()
-        self.regression = FeatureRegression(input_nc=192, output_dim=2*opt.grid_size**2, use_cuda=True)
-        self.gridGen = TpsGridGen(opt.fine_height, opt.fine_width, use_cuda=True, grid_size=opt.grid_size)
+
+        self.regression = FeatureRegression(input_nc=256, output_dim=2*opt.grid_size**2, use_cuda=True)
+        self.gridGen = TpsGridGen(opt.fine_height, 256, use_cuda=True, grid_size=opt.grid_size)
         
     def forward(self, inputA, inputB):
+        print(inputA.size(), inputB.size())
         featureA = self.extractionA(inputA)
         featureB = self.extractionB(inputB)
+        print("after extraction", featureA.size(), featureB.size())
         featureA = self.l2norm(featureA)
         featureB = self.l2norm(featureB)
-        correlation = self.correlation(featureA, featureB)
-
+        concat_features = torch.cat([featureA, featureB], 1)
+        print("after normalization", featureA.size(), featureB.size())
+        correlation = self.correlation(concat_features)
+        print("correlation", correlation.size())
         theta = self.regression(correlation)
         grid = self.gridGen(theta)
         return grid, theta
