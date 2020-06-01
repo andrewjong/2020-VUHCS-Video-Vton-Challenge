@@ -1,4 +1,4 @@
-name: cp-vton
+name: cp-vton-1
 channels:
   - pytorch
   - defaults
