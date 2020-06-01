@@ -1,7 +1,8 @@
-#To Run CP-VTON modded train_vvt.py
-python train.py -b 1 --vibe  
+# To Run CP-VTON modded train_vvt.py
+```python train.py -b 1``` 
+{batch size: 1, vibe included)
+```python train.py -b 1 --vibe 0``` 
 {batch size: 1, no vibe}
-
 
 # Fork Description
 This fork is for us to add modifications to the original cp-vton code. In particular, we are experimenting with further data annotation with the CP-VTON architecture.
