@@ -7,9 +7,9 @@ class Encoder(nn.Module):
 
         def encoder_block(in_feat, out_feat):
             block = [
-                nn.Linear(in_feat, out_feat),
+                nn.Linear(in_feat,out_feat),
+                nn.ReLU(inplace=True),
                 nn.BatchNorm1d(out_feat),  # check out 2nd parameter information
-                nn.ReLU(inplace=True)
             ]
 
             return block

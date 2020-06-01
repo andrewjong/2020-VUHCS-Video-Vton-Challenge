@@ -63,9 +63,16 @@ def test_gmm(opt, test_loader, model, board):
         agnostic = inputs['agnostic'].cuda()
         c = inputs['cloth'].cuda()
         cm = inputs['cloth_mask'].cuda()
-        im_c =  inputs['parse_cloth'].cuda()
+        im_c = inputs['parse_cloth'].cuda()
         im_g = inputs['grid_image'].cuda()
-            
+
+        # =======================================
+        # agnostic needs to contain
+        # 22 channels from before
+        # 1 more channel for SCHP  ?
+        # 3 for 3d joints, 1 for pose, 1 for body
+        # =======================================
+
         grid, theta = model(agnostic, c)
         warped_cloth = F.grid_sample(c, grid, padding_mode='border')
         warped_mask = F.grid_sample(cm, grid, padding_mode='zeros')
