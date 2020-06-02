@@ -101,9 +101,12 @@ class VVTDataset(data.Dataset):
             just_folder_and_file = _schp_name.split("/")[-2:]
             frame_path = osp.join(self._schp_dir, *just_folder_and_file)
             frame_image = Image.open(frame_path)
+            frame_np = np.asarray(frame_image)
+            #print("frame_np:", np.unique(frame_np), frame_np.shape)
             #plt.imshow(frame_image)
-            frame = self.to_tensor(frame_image)
+            frame = torch.from_numpy(frame_np)
             frame = self._pad_width_up(frame)
+            #print("unique frame:", torch.unique(frame), frame.size())
             frames.append(frame)
 
         return frames
@@ -238,63 +241,48 @@ class VVTDataset(data.Dataset):
         cloth_image = Image.open(pers_cloth_path)
         #plt.imshow(cloth_image)
         cloth_tensor = self.to_tensor(cloth_image)
+        cloth_img = transforms.functional.to_pil_image(cloth_tensor)  # Image.fromarray(cloth_np).convert("L")
+        cloth_img = transforms.functional.to_grayscale(cloth_img)
+        cloth_np = np.array(cloth_img)
+        cloth_mask = np.where(cloth_np > 240, 0, 255)
+        cloth_mask = torch.from_numpy(cloth_mask)
+        print("cloth_mask_input shape", cloth_mask.shape)
+        cloth_mask = self._pad_width_up(cloth_mask)
         cloth_tensor = self._pad_width_up(cloth_tensor)
-        return cloth_tensor
+        return cloth_tensor, cloth_mask
 
     def generate_head(self, image_target, schp):
-        print("generate_head")
-        print(len(image_target))
-        print(len(schp))
+        #print("generate_head")
+        #print(len(image_target))
+        #print(len(schp))
         heads = []
         for i in range(len(image_target)):
             image = image_target[i]
             cloth_seg = schp[i]
-            print(image.size())
-            print(cloth_seg.size())
+            #print(image.size())
+            #print(cloth_seg.size())
             image = image.numpy()
             cloth_seg = cloth_seg.numpy()
-            print(image.shape)
-            print(cloth_seg.shape)
+            #print(image.shape)
+            #print(cloth_seg.shape)
             FACE = 13
             #UPPER_CLOTHES = 5
             HAIR = 2
             out = np.where(cloth_seg == FACE, 256, 0)
             out1 = np.where(cloth_seg == HAIR, 256, 0)
             mask = out + out1
-            print("mask: ", mask.shape)
+            #print("mask: ", mask.shape)
+
+            mask = np.expand_dims(mask, 0)
             mask = np.vstack((mask, mask, mask))
-            print("mask: ", mask.shape)
+            #print("mask: ", mask.shape)
             head = np.where(image < mask, image, 255)
             head = torch.from_numpy(head)
+
+
             heads.append(head)
 
         return heads
-
-
-    def generate_cloth_mask(self, image_target, schp):
-        print("generate_head")
-        print(len(image_target))
-        print(len(schp))
-        cloth_masks = []
-        for i in range(len(image_target)):
-            image = image_target[i]
-            cloth_seg = schp[i]
-            print(image.size())
-            print(cloth_seg.size())
-            image = image.numpy()
-            cloth_seg = cloth_seg.numpy()
-            print(image.shape)
-            print(cloth_seg.shape)
-
-            UPPER_CLOTHES = 5
-
-            out = np.where(cloth_seg == UPPER_CLOTHES, 256, 0)
-            mask = np.vstack((out, out, out))
-            cloth_mask = np.where(image < mask, 0, 255)
-            cloth_mask = torch.from_numpy(cloth_mask)
-            cloth_masks.append(cloth_mask)
-
-        return cloth_masks
 
     def generate_body_shape(self, image_target, schp):
         body_shapes = []
@@ -309,8 +297,9 @@ class VVTDataset(data.Dataset):
             print(cloth_seg.shape)
 
 
-            out = np.where(cloth_seg == 0, 256, 0)
-            mask = np.vstack((out, out, out))
+            mask = np.where(cloth_seg == 0, 256, 0)
+            mask = np.expand_dims(mask, 0)
+            mask = np.vstack((mask, mask, mask))
             body_shape = np.where(image < mask, 0, 255)
             body_shape = torch.from_numpy(body_shape)
             body_shapes.append(body_shape)
@@ -319,49 +308,33 @@ class VVTDataset(data.Dataset):
 
     def __getitem__(self, index):
 
-        """
-                vvt_fnames = self.data_list[index]
 
-                #print("VVT File Name")
-                #print(len(vvt_fnames))
-                #print("VVT File Name", vvt_fnames[0])
-                print("VVT File Name", vvt_fnames[0].split("/")[4])
-                vvt_output_list = []
-                for vvt_fname in vvt_fnames:
-                    #print(vvt_fname)
-                    vvt_output = Image.open(vvt_fname)
-                    vvt_output = np.asarray(vvt_output)
-                    np.expand_dims(vvt_output, axis=0)
-                    vvt_output = torch.tensor(vvt_output)
-                    vvt_output_list.append(vvt_output)
-
-                #print(vvt_fname)
-                #vvt_output = Image.open(vvt_fname)
-                #print(schp_output.shape)
-                #out = Image.fromarray(vvt_output.astype('uint8'))
-                #print(type(vvt_output))
-
-
-                return vvt_output_list
 
         """
-
-        """
-        Returns: <a dict> {'input': frontal view of person
-                           'cloth': frontal view of cloth
-                           'guide': pose at all frames
-                           'target': image at all views image
+        Returns: <a dict> {
+            'input': input,
+            "cloth": cloth,
+            "cloth_mask": cloth_mask,
+            "guide_path": self.keypoints[index],
+            'guide': guide,
+            'target': target,
+            "schp": schp,
+            "vibe": vibe,
+            "heads": heads,
+            "body_shapes": body_shapes
+        }
         """
 
         image = self.get_input_person(index)  # (3, 256, 256)
-        cloth = self.get_input_cloth(index)   # (3, 256, 256)
+        cloth, cloth_mask = self.get_input_cloth(index)   # (3, 256, 256)
+
+
         print("good")
         #in index video, get keypoints
         try:
             pose_target = self.get_input_person_pose(index, target_width=256)  # (18, 256, 256)
         except IndexError as e:
             print(e.__traceback__)
-            #print(f"[WARNING]: no pose found {self.keypoints[index]}")
             pose_target = torch.zeros(18, 256, 256)
 
         image_target = self.get_target_frame(index)
@@ -369,13 +342,8 @@ class VVTDataset(data.Dataset):
         if self.opt.vibe:
             vibe = self.get_vibe_vid(index)
         heads = self.generate_head(image_target, schp)
-        cloth_masks = self.generate_cloth_mask(image_target, schp)
         body_shapes = self.generate_body_shape(image_target, schp)
 
-        #assert image.shape[-2:] == pose_target[0].shape[
-                                   #-2:], f"hxw don't match: image {image.shape}, pose {pose_target.shape}"
-        #assert image.shape[-2:] == image_target[0].shape[
-                                   #-2:], f"hxw don't match: image {image.shape}, pose {pose_target.shape}"
 
         # random fliping
         # if (self.opt.isTrain):
@@ -398,18 +366,21 @@ class VVTDataset(data.Dataset):
         target = [(target_tensor/255) * 2 - 1 for target_tensor in image_target]
         print("target", len(image_target))  # (frames, 3, 256, 256)
         # Put data into [input, cloth, guide, target]
+        print("cloth_mask size", cloth_mask.size())
 
-        plt.show()
+        #assert cloth_mask.dim() == 4
+
+        #plt.show()
         vvt_result = {
             'input': input,
             "cloth": cloth,
+            "cloth_mask": cloth_mask,
             "guide_path": self.keypoints[index],
             'guide': guide,
             'target': target,
             "schp": schp,
             #"vibe": vibe,
             "heads": heads,
-            "cloth_masks": cloth_masks,
             "body_shapes": body_shapes
         }
 
@@ -472,7 +443,8 @@ def main():
     #plt.imshow(A.permute(1, 2, 0))
     #plt.imshow(guide.permute(1, 2, 0))
     #plt.imshow(B.permute(1, 2, 0))
-    plt.show()
+
+    #plt.show()
 
     """print([x[0] for x in vvt.data_list])
     vvt.data_list.sort()

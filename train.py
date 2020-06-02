@@ -54,10 +54,11 @@ def train_gmm(opt, dataloaders, model, board):
     
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda = lambda step: 1.0 -
-            max(0, step - opt.keep_step) / float(opt.decay_step + 1))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda = lambda step: 1.0 - max(0, step - opt.keep_step) / float(opt.decay_step + 1))
     
     for step in range(opt.keep_step + opt.decay_step):
+        if step is 0:
+            continue
         iter_start_time = time.time()
         vibe_inputs = vibe_loader.next_batch()
 
