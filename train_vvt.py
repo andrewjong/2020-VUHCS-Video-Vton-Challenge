@@ -83,14 +83,9 @@ def train_gmm(opt, vvt_loader, model, board):
     for step in range(opt.keep_step + opt.decay_step):
         iter_start_time = time.time()
         vvt_vid = next(vvt_loader)
-        """vibe_inputs = next(vibe_loader)
-        schp_vid = next(schp_loader)"""
 
 
-        # TODO: bug with order of dataloading
-        # print("VVT:", type(vvt_vid), len(vvt_vid), type(vvt_vid[0]))
-        """print("VIBE:", type(vibe_inputs), len(vibe_inputs), type(vibe_inputs[0]), len(vibe_inputs[0][0]), vibe_inputs[0][-1][-1].item())
-        print("SCHP:", type(schp_vid), len(schp_vid), type(schp_vid[0]))"""
+
         input = vvt_vid['input']
         cloth = vvt_vid['cloth'].to(cuda)
         guide_path = vvt_vid['guide_path']
@@ -100,7 +95,11 @@ def train_gmm(opt, vvt_loader, model, board):
         if opt.vibe:
             vibe = vvt_vid['vibe']
         heads = vvt_vid['heads']
-        cloth_masks = vvt_vid['cloth_masks']
+        cloth_mask = vvt_vid['cloth_mask']
+        print("cloth_mask size", cloth_mask.size())
+        cloth_mask = torch.unsqueeze(cloth_mask, 0)
+        print("cloth_mask size", cloth_mask.size())
+        assert cloth_mask.dim() == 4
         body_shapes = vvt_vid['body_shapes']
 
 
@@ -114,12 +113,7 @@ def train_gmm(opt, vvt_loader, model, board):
 
         for index, frame in enumerate(frame_ids):
             #print("index:", index, "frame:", frame.item())
-            # which of these are generated vs which are created
 
-            # MAJOR
-            # ROADBLOCK
-            # look
-            # into!
             '''
             Created in Algorithm # TODO: (need to create)
             agnostic [pose, head, shape]
@@ -134,8 +128,6 @@ def train_gmm(opt, vvt_loader, model, board):
             pose_image - pose points? can we generate this 18 channel map? --> loaded through vvt
             grid_image - just a png
             
-            List
-            
             
                          
             '''
@@ -143,7 +135,6 @@ def train_gmm(opt, vvt_loader, model, board):
             vvt_frame = target[frame]
             schp_frame = schp[frame]
             head = heads[frame]
-            cloth_mask = cloth_masks[frame]
             body_shape = body_shapes[frame]
             pose = guide[frame]
 
@@ -173,15 +164,7 @@ def train_gmm(opt, vvt_loader, model, board):
                 out_pose_param = torch.reshape(out_pose, (1, 1, 256, 256))
                 out_body_shape_param = torch.reshape(out_body, (1, 1, 256, 256))
                 out_joints_3d = torch.reshape(out_joints, (1, 1, 256, 256))
-            '''im = vvt_inputs['image'].cuda()
-            im_pose = vvt_inputs['pose_image'].cuda()
-            im_h = vvt_inputs['head'].cuda()
-            shape = vvt_inputs['shape'].cuda()
-            agnostic = vvt_inputs['agnostic'].cuda()
-            c = vvt_inputs['cloth'].cuda()
-            cm = vvt_inputs['cloth_mask'].cuda()
-            im_c = vvt_inputs['parse_cloth'].cuda()
-            im_g = vvt_inputs['grid_image'].cuda()'''
+
 
             '''
             Person Representation p
@@ -198,23 +181,25 @@ def train_gmm(opt, vvt_loader, model, board):
             """[print(type(x), x.size(), x.dtype, x.type()) for x in [body_shape, head, pose, schp_frame, out_pose_param,
                     out_body_shape_param, out_joints_3d]]"""
 
-            body_shape = body_shape.type(torch.FloatTensor)
-
+            body_shape, schp_frame = body_shape.type(torch.FloatTensor), schp_frame.type(torch.FloatTensor)
+            schp_frame = schp_frame.unsqueeze(0)
             body_shape, head, pose, schp_frame = body_shape.to(cuda), head.to(cuda), pose.to(cuda), schp_frame.to(cuda)
 
             if opt.vibe:
+                [print(type(x), x.size(), x.dtype, x.type()) for x in
+                 [body_shape, head, pose, schp_frame, out_pose_param,
+                  out_body_shape_param, out_joints_3d]]
                 out_pose_param, out_body_shape_param, out_joints_3d = out_pose_param.to(cuda), out_body_shape_param.to(
                     cuda), out_joints_3d.to(cuda)
                 p = torch.cat([body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d], 1)
             else:
+                [print(type(x), x.size(), x.dtype, x.type()) for x in
+                 [body_shape, head, pose, schp_frame]]
                 p = torch.cat([body_shape, head, pose, schp_frame], 1)
 
-            """[print(type(x), x.size(), x.dtype, x.type()) for x in [body_shape, head, pose, schp_frame, out_pose_param,
-                                                         out_body_shape_param, out_joints_3d]]"""
             cloth_mask = cloth_mask.type(torch.FloatTensor)
             cloth_mask = cloth_mask.to(cuda)
-
-            print("cloth mask", type(cloth_mask))
+            print("cloth mask", cloth_mask.type(), cloth_mask.size())
             print("finished person representation", p.size())
             grid, theta = model(p, cloth)
             print(grid, theta)
