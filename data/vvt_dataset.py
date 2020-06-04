@@ -7,11 +7,6 @@ import os.path as osp
 import argparse
 from glob import glob
 import joblib
-from data.vibe_dataset import VIBEDataset
-from data.schp import SCHPDataset
-from PIL import Image
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from skimage import draw
 import json
@@ -436,10 +431,15 @@ def main():
     guide_path = out['guide_path']
     guide = out["guide"]
     target = out['target']
-    print(type(out))
-    print(out.keys())
-    print(type(input), type(guide_path), type(guide), type(target))
-    print(input.size(), len(guide_path), len(guide), len(target))
+    unique, counts = torch.unique(guide[0], return_counts=True)
+    print("in main", type(guide), len(guide))
+    print("in main", guide[0].type(), guide[0].size(), unique, counts)
+
+    mask = torch.where(guide[0] < -1, 0, guide[0])
+    print("mask", mask.size(), torch.unique(mask))
+    mask = torch.sum(guide[0], 0)
+    print("mask", mask.size(), torch.unique(mask))
+
     #plt.imshow(A.permute(1, 2, 0))
     #plt.imshow(guide.permute(1, 2, 0))
     #plt.imshow(B.permute(1, 2, 0))
