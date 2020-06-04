@@ -7,8 +7,6 @@ import os.path as osp
 import argparse
 from glob import glob
 import joblib
-from data.vibe_dataset import VIBEDataset
-from data.schp import SCHPDataset
 from PIL import Image
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -22,6 +20,7 @@ import torchvision.transforms as transforms
 import torch
 from PIL import ImageDraw
 from PIL import Image
+from multiprocessing import set_start_method
 
 
 class VVTDataset(data.Dataset):
@@ -83,6 +82,7 @@ class VVTDataset(data.Dataset):
         for _pose_name in _pose_names:
             _pose_name = _pose_name.replace("_keypoints.json", ".png")
             just_folder_and_file = _pose_name.split("/")[-2:]
+            print("VVT Folder Name", just_folder_and_file[0])
             frame_path = osp.join(self._frames_dir, *just_folder_and_file)
             frame_image = Image.open(frame_path)
             #plt.imshow(frame_image)
@@ -99,6 +99,7 @@ class VVTDataset(data.Dataset):
             #print(_schp_name)
             _schp_name = _schp_name.replace("_keypoints.json", ".png")
             just_folder_and_file = _schp_name.split("/")[-2:]
+            print("SCHP Folder Name", just_folder_and_file[0])
             frame_path = osp.join(self._schp_dir, *just_folder_and_file)
             frame_image = Image.open(frame_path)
             frame_np = np.asarray(frame_image)
@@ -108,7 +109,8 @@ class VVTDataset(data.Dataset):
             frame = self._pad_width_up(frame)
             #print("unique frame:", torch.unique(frame), frame.size())
             frames.append(frame)
-
+    
+    
         return frames
 
     def get_vibe_vid(self, index):
@@ -172,7 +174,6 @@ class VVTDataset(data.Dataset):
                 pose_data = pose_data.reshape((-1, 3))
 
             point_num = pose_data.shape[0]  # how many pose joints
-            print("point num:", point_num)
             #assert point_num == 17, "should be 18 pose joints for guidedpix2pix"
             # construct an N-channel map tensor with -1
             pose_map = torch.zeros(point_num, self.img_h, self.img_w) - 1
@@ -246,36 +247,25 @@ class VVTDataset(data.Dataset):
         cloth_np = np.array(cloth_img)
         cloth_mask = np.where(cloth_np > 240, 0, 255)
         cloth_mask = torch.from_numpy(cloth_mask)
-        print("cloth_mask_input shape", cloth_mask.shape)
         cloth_mask = self._pad_width_up(cloth_mask)
         cloth_tensor = self._pad_width_up(cloth_tensor)
         return cloth_tensor, cloth_mask
 
     def generate_head(self, image_target, schp):
-        #print("generate_head")
-        #print(len(image_target))
-        #print(len(schp))
         heads = []
         for i in range(len(image_target)):
             image = image_target[i]
             cloth_seg = schp[i]
-            #print(image.size())
-            #print(cloth_seg.size())
             image = image.numpy()
             cloth_seg = cloth_seg.numpy()
-            #print(image.shape)
-            #print(cloth_seg.shape)
             FACE = 13
-            #UPPER_CLOTHES = 5
             HAIR = 2
             out = np.where(cloth_seg == FACE, 256, 0)
             out1 = np.where(cloth_seg == HAIR, 256, 0)
             mask = out + out1
-            #print("mask: ", mask.shape)
 
             mask = np.expand_dims(mask, 0)
             mask = np.vstack((mask, mask, mask))
-            #print("mask: ", mask.shape)
             head = np.where(image < mask, image, 255)
             head = torch.from_numpy(head)
 
@@ -289,12 +279,8 @@ class VVTDataset(data.Dataset):
         for i in range(len(image_target)):
             image = image_target[i]
             cloth_seg = schp[i]
-            print(image.size())
-            print(cloth_seg.size())
             image = image.numpy()
             cloth_seg = cloth_seg.numpy()
-            print(image.shape)
-            print(cloth_seg.shape)
 
 
             mask = np.where(cloth_seg == 0, 256, 0)
@@ -324,12 +310,11 @@ class VVTDataset(data.Dataset):
             "body_shapes": body_shapes
         }
         """
-
+        print("index:", index)
         image = self.get_input_person(index)  # (3, 256, 256)
         cloth, cloth_mask = self.get_input_cloth(index)   # (3, 256, 256)
 
 
-        print("good")
         #in index video, get keypoints
         try:
             pose_target = self.get_input_person_pose(index, target_width=256)  # (18, 256, 256)
@@ -426,11 +411,153 @@ def get_opt():
     opt = parser.parse_args()
     return opt
 
+def collate_fn_padd(batch):
+    '''
+    Padds batch of variable length
+
+    note: it converts things ToTensor manually here since the ToTensor transform
+    assume it takes in images rather than arbitrary tensors.
+    '''
+    ## get sequence lengths
+    print("collate_fn_padd:", batch, type(batch), batch.size(), batch.type())
+    cuda = torch.device('cuda')
+    lengths = torch.tensor([ t.shape[0] for t in batch ]).to(cuda)
+    ## padd
+    batch = [ torch.Tensor(t).to(cuda) for t in batch ]
+    batch = torch.nn.utils.rnn.pad_sequence(batch)
+    ## compute mask
+    mask = (batch != 0).to(cuda)
+    print("collate_fn_padd:", batch, type(batch), batch.size(), batch.type())
+    return batch, lengths, mask
+
 def main():
+    try:
+        set_start_method('spawn')
+    except RuntimeError:
+        pass
     opt = get_opt()
 
     vvt = VVTDataset(opt)
-    out = vvt[400]
+
+    print(opt)
+    print("Start to train stage: %s, named: %s!" % (opt.stage, opt.name))
+
+    # =====================================================================
+
+    # create dataset
+    cuda = torch.device('cuda')
+    vvt = VVTDataset(opt)
+    print("VVT Dataset Created. Length of dataset", len(vvt))
+    """schp = SCHPDataset(opt)
+    print("SCHP Dataset Created. Length of dataset", len(schp))
+    vibe = VIBEDataset(opt)
+    print("VIBE Dataset Created. Length of dataset", len(vibe))"""
+
+    # create dataloader
+
+    vvt_loader = torch.utils.data.DataLoader(
+        vvt, batch_size=opt.batch_size, shuffle=None,
+        num_workers=opt.workers, collate_fn=collate_fn_padd)
+    vvt_loader = iter(vvt_loader)
+    # criterion
+
+
+    # optimizer
+
+    '''
+    for each # step
+        for each # batch
+            from each # frame
+    '''
+
+    print("init train_gmm, ready to get into loop")
+
+    i = 0
+    for step in range(opt.keep_step + opt.decay_step):
+        print("Started step", step)
+        vvt_vid = vvt[i]
+        i += 1
+
+        input = vvt_vid['input']
+        cloth = vvt_vid['cloth'].to(cuda)
+        guide_path = vvt_vid['guide_path']
+        guide = vvt_vid['guide']
+        target = vvt_vid['target']
+        schp = vvt_vid['schp']
+        if opt.vibe:
+            vibe = vvt_vid['vibe']
+        heads = vvt_vid['heads']
+        cloth_mask = vvt_vid['cloth_mask']
+        # print("cloth_mask size", cloth_mask.size())
+        cloth_mask = torch.unsqueeze(cloth_mask, 0)
+        # print("cloth_mask size", cloth_mask.size())
+        #assert cloth_mask.dim() == 4
+        body_shapes = vvt_vid['body_shapes']
+        # print(len(schp))
+        # print(len(input))
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print(len(input), len(guide), len(target), len(schp), len(heads), cloth_mask.size(), len(body_shapes))
+        assert (len(target) == len(schp) == len(heads) == len(body_shapes))
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+
+        # unravel next batch
+        if opt.vibe:
+            frame_ids, pose_params, body_shape_params, joints_3d = vibe
+            "frame_ids, pose_params, body_shape_params, joints_3d = frame_ids[0], pose_params[0], body_shape_params[0], \
+                                                                   joints_3d[0]"
+
+            print("in vibe", type(frame_ids), len(frame_ids))
+            print("Basic Size as gotten from the VIBEDataset")
+            print("Frame IDs:", len(frame_ids), frame_ids)
+            print("Pose Parameters:", pose_params.size())
+            print("Body Shape Parameters:", body_shape_params.size())
+            print("Joints 3D Size:", joints_3d.size())
+        else:
+            frame_ids = [x for x in range(len(schp))]
+            print("not in vibe", type(frame_ids))
+
+        for index, frame in enumerate(frame_ids):
+            #print("frame:", len(frame_ids), frame)
+            # print("index:", index, "frame:", frame.item())
+
+            '''
+            Created in Algorithm # TODO: (need to create)
+            agnostic [pose, head, shape]
+            shape
+            head
+            cloth_mask
+
+            Passed into Algorithm # TODO: (find where it is and use input it)
+            cloth - from vvt -> (cloth)
+            image - from vvt -> (input)
+            parse_cloth - cloth segmentation? --> loaded through schp
+            pose_image - pose points? can we generate this 18 channel map? --> loaded through vvt
+            grid_image - just a png
+
+
+
+            '''
+            try:
+                vvt_frame = target[frame]
+            except:
+                print("index:", index)
+                print("frame:", frame)
+                print(len(target), target[0].size())
+            schp_frame = schp[frame]
+            head = heads[frame]
+            body_shape = body_shapes[frame]
+            pose = guide[frame]
+            """print("vvt_frame:", vvt_frame.size(), vvt_frame.type())
+            print("schp_frame:", schp_frame.size(), schp_frame.type())
+            print("head:", head.size(), head.type())
+            print("body_shape:", body_shape.size(), body_shape.type())
+            print("pose:", pose.size(), pose.type())"""
+
+    """
 
     input = out['input']
     guide_path = out['guide_path']
@@ -439,7 +566,7 @@ def main():
     print(type(out))
     print(out.keys())
     print(type(input), type(guide_path), type(guide), type(target))
-    print(input.size(), len(guide_path), len(guide), len(target))
+    print(input.size(), len(guide_path), len(guide), len(target))"""
     #plt.imshow(A.permute(1, 2, 0))
     #plt.imshow(guide.permute(1, 2, 0))
     #plt.imshow(B.permute(1, 2, 0))
@@ -518,4 +645,6 @@ def main():
 
     #print("first:", first_.size())
 
-main()
+if __name__ == '__main__':
+    torch.multiprocessing.freeze_support()
+    main()

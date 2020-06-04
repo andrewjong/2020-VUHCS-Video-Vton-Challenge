@@ -123,13 +123,8 @@ class FeatureRegression(nn.Module):
             self.tanh.cuda()
 
     def forward(self, x):
-        print(x.size())
         x = self.conv(x)
-        print(x.size())
         x = x.contiguous().view(x.size(0), -1)
-
-        #x = torch.reshape(x, (x.size(0), -1))
-        print(x.size())
         x = self.linear(x)
         x = self.tanh(x)
         return x
@@ -425,16 +420,16 @@ class GMM(nn.Module):
         self.gridGen = TpsGridGen(opt.fine_height, 256, use_cuda=True, grid_size=opt.grid_size)
         
     def forward(self, inputA, inputB):
-        print(inputA.size(), inputB.size())
+        #print(inputA.size(), inputB.size())
         featureA = self.extractionA(inputA)
         featureB = self.extractionB(inputB)
-        print("after extraction", featureA.size(), featureB.size())
+        #print("after extraction", featureA.size(), featureB.size())
         featureA = self.l2norm(featureA)
         featureB = self.l2norm(featureB)
         concat_features = torch.cat([featureA, featureB], 1)
-        print("after normalization", featureA.size(), featureB.size())
+        #print("after normalization", featureA.size(), featureB.size())
         correlation = self.correlation(concat_features)
-        print("correlation", correlation.size())
+        #print("correlation", correlation.size())
         theta = self.regression(correlation)
         grid = self.gridGen(theta)
         return grid, theta
