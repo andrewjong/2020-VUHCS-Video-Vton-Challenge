@@ -81,6 +81,7 @@ def train_gmm(opt, vvt_loader, model, board):
     im_g = im_g.to(cuda)
 
     for step in range(opt.keep_step + opt.decay_step):
+        print("Started step", step)
         iter_start_time = time.time()
         vvt_vid = next(vvt_loader)
 
@@ -96,12 +97,21 @@ def train_gmm(opt, vvt_loader, model, board):
             vibe = vvt_vid['vibe']
         heads = vvt_vid['heads']
         cloth_mask = vvt_vid['cloth_mask']
-        print("cloth_mask size", cloth_mask.size())
+        #print("cloth_mask size", cloth_mask.size())
         cloth_mask = torch.unsqueeze(cloth_mask, 0)
-        print("cloth_mask size", cloth_mask.size())
+        #print("cloth_mask size", cloth_mask.size())
         assert cloth_mask.dim() == 4
         body_shapes = vvt_vid['body_shapes']
-
+        #print(len(schp))
+        #print(len(input))
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print(len(input), len(guide), len(target), len(schp), len(heads), cloth_mask.size(), len(body_shapes) )
+        assert (len(target) == len(schp) == len(heads) == len(body_shapes))
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
 
         # unravel next batch
@@ -112,6 +122,7 @@ def train_gmm(opt, vvt_loader, model, board):
             frame_ids = [x for x in range(len(schp))]
 
         for index, frame in enumerate(frame_ids):
+            print("frame:", frame)
             #print("index:", index, "frame:", frame.item())
 
             '''
@@ -186,25 +197,36 @@ def train_gmm(opt, vvt_loader, model, board):
             body_shape, head, pose, schp_frame = body_shape.to(cuda), head.to(cuda), pose.to(cuda), schp_frame.to(cuda)
 
             if opt.vibe:
+
+                out_pose_param, out_body_shape_param, out_joints_3d = out_pose_param.to(cuda), out_body_shape_param.to(
+                    cuda), out_joints_3d.to(cuda)
+
+                for x in [body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d]:
+                    while(x.dim() < 4):
+                        x = torch.unsqueeze(x, 0)
                 [print(type(x), x.size(), x.dtype, x.type()) for x in
                  [body_shape, head, pose, schp_frame, out_pose_param,
                   out_body_shape_param, out_joints_3d]]
-                out_pose_param, out_body_shape_param, out_joints_3d = out_pose_param.to(cuda), out_body_shape_param.to(
-                    cuda), out_joints_3d.to(cuda)
+
                 p = torch.cat([body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d], 1)
             else:
+
+                if pose.dim() < 4:
+                    print("pose increase")
+                    pose = torch.unsqueeze(pose, 0)
                 [print(type(x), x.size(), x.dtype, x.type()) for x in
                  [body_shape, head, pose, schp_frame]]
+
                 p = torch.cat([body_shape, head, pose, schp_frame], 1)
 
             cloth_mask = cloth_mask.type(torch.FloatTensor)
             cloth_mask = cloth_mask.to(cuda)
-            print("cloth mask", cloth_mask.type(), cloth_mask.size())
-            print("finished person representation", p.size())
+            #print("cloth mask", cloth_mask.type(), cloth_mask.size())
+            #print("finished person representation", p.size())
             grid, theta = model(p, cloth)
-            print(grid, theta)
-            print(type(grid), type(theta))
-            print(grid.size(), theta.size())
+            #print(grid, theta)
+            #print(type(grid), type(theta))
+            #print(grid.size(), theta.size())
 
             warped_cloth = F.grid_sample(cloth, grid, padding_mode='border')
             warped_mask = F.grid_sample(cloth_mask, grid, padding_mode='zeros')
@@ -213,8 +235,7 @@ def train_gmm(opt, vvt_loader, model, board):
             """visuals = [[im_h, shape, im_pose],
                        [c, warped_cloth, im_c],
                        [warped_grid, (warped_cloth + im) * 0.5, im]]"""
-            print(warped_cloth.size())
-            print(schp_frame.size())
+
             loss = criterionL1(warped_cloth, schp_frame)
             print("calculated loss")
             optimizer.zero_grad()
