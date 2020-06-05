@@ -15,6 +15,8 @@ from datasets import (
 
 from tensorboardX import SummaryWriter
 from visualization import board_add_images
+from multiprocessing import set_start_method
+
 
 
 def get_opt():
@@ -207,6 +209,11 @@ def train_tom(opt, train_loader, model, board):
 
 
 def main():
+    try:
+        set_start_method('spawn')
+    except RuntimeError:
+        pass
+
     opt = get_opt()
     print(opt)
     print("Start to train stage: %s, named: %s!" % (opt.stage, opt.name))

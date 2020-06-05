@@ -1,7 +1,7 @@
 # coding=utf-8
 import torch
 import torch.utils.data as data
-import torchvision.transforms as transforms
+import torchvision
 
 from PIL import Image
 from PIL import ImageDraw
@@ -31,8 +31,7 @@ class CpVvtMpvDataset(data.Dataset):
         self.vvt_dataset = VVTDataset(opt)
         self.mpv_dataset = MPVDataset(opt)
 
-        self.transforms = transforms.Compose([
-        ])
+
 
     def __getitem__(self, index):
         if index < len(self.cp_dataset):
