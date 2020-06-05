@@ -1,7 +1,11 @@
 # coding=utf-8
+import cv2
 import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
+
+import albumentations as albu
+from albumentations.pytorch.transforms import ToTensorV2
 
 from PIL import Image
 from PIL import ImageDraw
@@ -31,6 +35,41 @@ class CPDataset(data.Dataset):
         self.fine_width = opt.fine_width
         self.radius = opt.radius
         self.data_path = osp.join(opt.dataroot, opt.datamode)
+
+        self.person_transforms = albu.Compose(
+            [
+                # any spatial
+                # scale_limit: we zoom in by a lot because our test data has zoomed in images
+                # border_mode: border replicate because extend the background
+                # rotation: keep rotation high so it really learns to fit to the body shape
+                albu.ShiftScaleRotate(
+                    scale_limit=(0.1, 0.5),
+                    interpolation=cv2.INTER_CUBIC,
+                    border_mode=cv2.BORDER_REPLICATE,
+                ),
+                # we have to CenterCrop here before we combine agnostic
+                albu.CenterCrop(self.fine_height, self.fine_width),
+            ]
+        )
+        self.product_transforms = albu.Compose(
+            [
+                # leave scale limit to default small, we don't expect product image to vary in scale by much
+                albu.RandomScale(),
+                # make rotation small, we don't expect much rotation in the product image
+                albu.Rotate(5),
+                albu.CenterCrop(self.fine_height, self.fine_width),
+            ]
+        )
+        self.shared_transforms = albu.Compose(
+            [
+                albu.HorizontalFlip(),
+                albu.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                ToTensorV2(),
+            ]
+        )
+
+        # if we flip, we should also flip EVERYTHING including the product image
+
         self.center_crop = transforms.CenterCrop((self.fine_height, self.fine_width))
         self.to_tensor_and_norm = transforms.Compose(
             [
@@ -136,8 +175,26 @@ class CPDataset(data.Dataset):
         # isolated cloth
         im_cloth = segment_cloths_from_image(im, _parse_array)
 
-        # load pose points
-        _pose_map, im_pose = self.get_input_person_pose(index)
+        pose_data = self.get_person_pose_data(index, with_confidence=False)
+
+        # apply albumentations to get the exact same transform
+        transformed = self.person_transforms(
+            im=im,
+            _parse_array=_parse_array,
+            silhouette=silhouette,
+            im_head=im,
+            im_cloth=im_cloth,
+            pose_data=pose_data,  # todo: what if pose_data is none? will it break?
+        )
+        im = transformed["im"]
+        _parse_array = transformed["_parse_array"]
+        silhouette = transformed["silhouette"]
+        im_head = transformed["im"]
+        im_cloth = transformed["im_cloth"]
+        pose_data = transformed["pose_data"] if pose_data is not None else None
+
+        # make heatmaps and visualization
+        _pose_map, im_pose = self.convert_pose_data_to_pose_map_and_vis(pose_data)
 
         # person-agnostic representation
         agnostic = torch.cat([silhouette, im_head, _pose_map], 0)
@@ -181,10 +238,7 @@ class CPDataset(data.Dataset):
         parsed_path = osp.join(self.data_path, "image-parse", parse_name)
         return parsed_path
 
-    def get_input_person_pose(self, index):
-        """from cp-vton, loads the pose as white squares
-        returns pose map, image of pose map
-        """
+    def get_person_pose_data(self, index, with_confidence=False):
         pose_path = self.get_input_person_pose_path(index)
         with open(pose_path, "r") as f:
             pose_label = json.load(f)
@@ -192,13 +246,12 @@ class CPDataset(data.Dataset):
                 pose_data = pose_label["people"][0]["pose_keypoints"]
                 pose_data = np.array(pose_data)
                 pose_data = pose_data.reshape((-1, 3))
+                if not with_confidence:
+                    pose_data = pose_data[:, :2]  # remove the 3rd column: confidence
             except IndexError:
                 # print("Warning: No pose data found for", pose_path)
                 pose_data = None
-
-        pose_map, im_pose = self.convert_pose_data_to_pose_map_and_vis(pose_data)
-
-        return pose_map, im_pose
+        return pose_data
 
     def convert_pose_data_to_pose_map_and_vis(self, pose_data):
         """
