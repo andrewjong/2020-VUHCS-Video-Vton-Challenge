@@ -20,9 +20,6 @@ from datasets.util import segment_cloths_from_image
 class CPDataset(data.Dataset):
     """Dataset for CP-VTON. """
 
-    def name(self):
-        return "CPDataset"
-
     def __init__(self, opt):
         super(CPDataset, self).__init__()
         # base setting
@@ -136,6 +133,7 @@ class CPDataset(data.Dataset):
         return cloth_path
 
     def get_input_cloth_name(self, index):
+        # determines the written thing
         return self.cloth_names[index]
 
     def get_input_cloth_mask(self, index):
@@ -253,6 +251,13 @@ class CPDataset(data.Dataset):
                 pose_data = None
         return pose_data
 
+    def get_input_person_pose_path(self, index):
+        """ path to pose keypoints """
+        im_name = self.get_person_image_name(index)
+        _pose_name = im_name.replace(".jpg", "_keypoints.json")
+        pose_path = osp.join(self.data_path, "pose", _pose_name)
+        return pose_path
+
     def convert_pose_data_to_pose_map_and_vis(self, pose_data):
         """
         Reads a pose data array and makes a 1-hot tensor and visualization
@@ -299,13 +304,6 @@ class CPDataset(data.Dataset):
         im_pose = self.to_tensor_and_norm(im_pose)
         return pose_map, im_pose
 
-    def get_input_person_pose_path(self, index):
-        """ path to pose keypoints """
-        im_name = self.get_person_image_name(index)
-        _pose_name = im_name.replace(".jpg", "_keypoints.json")
-        pose_path = osp.join(self.data_path, "pose", _pose_name)
-        return pose_path
-
     def get_input_person_head(self, im, _parse_array):
         """ from cp-vton, get the floating head alone"""
         # ISOLATE HEAD. head parts, probably face, hair, sunglasses. combines into a 1d binary mask
@@ -337,6 +335,8 @@ class CPDataset(data.Dataset):
 
     def __getitem__(self, index):
         im_name = self.get_person_image_name(index)
+        im_path = self.get_person_image_path(index)
+        cloth_path = self.get_input_cloth_path(index)
         # cloth representation
         cloth, cloth_mask = self.get_cloth_representation(index)
 
@@ -359,35 +359,36 @@ class CPDataset(data.Dataset):
 
         assert cloth.shape == torch.Size(
             [3, 256, 192]
-        ), f"cloth.shape = {cloth.shape} on {im_name}"
+        ), f"cloth.shape = {cloth.shape} on {im_path} {cloth_path}"
         assert cloth_mask.shape == torch.Size(
             [1, 256, 192]
-        ), f"cloth_mask.shape = {cloth_mask.shape} on {im_name}"
-        assert im.shape == torch.Size([3, 256, 192]), f"im = {im} on {im_name}"
+        ), f"cloth_mask.shape = {cloth_mask.shape} on {im_path} {cloth_path}"
+        assert im.shape == torch.Size([3, 256, 192]), f"im = {im.shape} on {im_path}"
         assert im_cloth.shape == torch.Size(
             [3, 256, 192]
         ), f"im_cloth = {im_cloth} on {im_name}"
         assert im_pose.shape == torch.Size(
             [1, 256, 192]
-        ), f"im_pose.shape = {im_pose.shape} on {im_name}"
+        ), f"im_pose.shape = {im_pose.shape} on {im_path}"
         assert silhouette.shape == torch.Size(
             [1, 256, 192]
-        ), f"silhouette.shape = {silhouette.shape} on {im_name}"
+        ), f"silhouette.shape = {silhouette.shape} on {im_path}"
         assert im_head.shape == torch.Size(
             [3, 256, 192]
-        ), f"im_head = {im_head} on {im_name}"
+        ), f"im_head = {im_head} on {im_path}"
         assert agnostic.shape == torch.Size(
             [22, 256, 192]
-        ), f"agnostic = {agnostic} on {im_name}"
-        assert im_grid.shape == torch.Size(
-            [3, 256, 192]
-        ), f"im_grid = {im_grid} on {im_name}"
+        ), f"agnostic = {agnostic} on {im_path}"
+        if im_grid != "":
+            assert im_grid.shape == torch.Size(
+                [3, 256, 192]
+            ), f"im_grid = {im_grid} on {im_path}"
 
         result = {
+            "dataset_name": self.__class__.__name__,
             "c_name": self.get_input_cloth_name(index),  # for visualization
-            "im_name": self.get_person_image_name(
-                index
-            ),  # for visualization or ground truth
+            "c_path": cloth_path,
+            "im_name": im_name,
             "cloth": cloth,  # for input
             "cloth_mask": cloth_mask,  # for input
             "image": im,  # for visualization

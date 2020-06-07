@@ -19,9 +19,6 @@ import json
 class VVTDataset(CPDataset):
     """Dataset for CP-VTON. """
 
-    def name(self):
-        return "CPDataset"
-
     def __init__(self, opt):
         super(VVTDataset, self).__init__(opt)
         del self.data_list  # not using this
@@ -32,7 +29,7 @@ class VVTDataset(CPDataset):
         """ Reads the datalist txt file for CP-VTON"""
         self.root = self.opt.vvt_dataroot  # override this
         folder = f"lip_{self.opt.datamode}_frames"
-        self.image_names = glob(f"{self.root}/{folder}/**/*.png")
+        self.image_names = sorted(glob(f"{self.root}/{folder}/**/*.png"))
 
     @staticmethod
     def extract_folder_id(image_path):
@@ -49,7 +46,9 @@ class VVTDataset(CPDataset):
     def get_input_cloth_path(self, index):
         image_path = self.image_names[index]
         folder_id = VVTDataset.extract_folder_id(image_path)
-        cloth_folder = osp.join(self.root, "lip_clothes_person", folder_id)
+
+        subdir = "lip_clothes_person" if self.stage == "GMM" else "warp-cloth"
+        cloth_folder = osp.join(self.root, subdir, folder_id)
         cloth_path = glob(f"{cloth_folder}/*cloth*")[0]
         return cloth_path
 
@@ -63,15 +62,21 @@ class VVTDataset(CPDataset):
         return cloth_mask
 
     def get_input_cloth_name(self, index):
-        return osp.basename(self.get_input_cloth_path(index))
+        cloth_path = self.get_input_cloth_path(index)
+        folder_id = VVTDataset.extract_folder_id(cloth_path)
+        base_cloth_name = osp.basename(cloth_path)
+        frame_name = osp.basename(self.get_person_image_name(index))
+        # e.g. 4he21d00f-g11/4he21d00f-g11@10=cloth_front.jpg
+        name = osp.join(folder_id, f"{base_cloth_name}.FOR.{frame_name}")
+        return name
 
     ########################
     # PERSON REPRESENTATION
     ########################
     def get_person_image_name(self, index):
         image_path = self.get_person_image_path(index)
-        id = VVTDataset.extract_folder_id(image_path)
-        name = osp.join(id, osp.basename(image_path))
+        folder_id = VVTDataset.extract_folder_id(image_path)
+        name = osp.join(folder_id, osp.basename(image_path))
         return name
 
     def get_person_image_path(self, index):
@@ -84,10 +89,12 @@ class VVTDataset(CPDataset):
         id = VVTDataset.extract_folder_id(image_path)
         parsed_fname = os.path.split(image_path)[-1].replace(".png", "_label.png")
         parsed_path = osp.join(self.root, folder, id, parsed_fname)
+        if not os.path.exists(parsed_path):  # hacky, if it doesn't exist as _label, then try getting rid of it. did this to fix my specific bug in a time crunch
+            parsed_path = parsed_path.replace("_label", "")
         return parsed_path
 
     def get_input_person_pose_path(self, index):
-        image_path = self.image_names[index]
+        image_path = self.get_person_image_path(index)
         folder = f"lip_{self.opt.datamode}_frames_keypoint"
         id = VVTDataset.extract_folder_id(image_path)
 

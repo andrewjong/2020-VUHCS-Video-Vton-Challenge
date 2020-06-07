@@ -11,9 +11,6 @@ from datasets.vvt_dataset import VVTDataset
 class MPVDataset(VVTDataset):
     """Dataset for CP-VTON. """
 
-    def name(self):
-        return "MPVDataset"
-
     def __init__(self, opt):
         super(MPVDataset, self).__init__(opt)
 
@@ -43,7 +40,8 @@ class MPVDataset(VVTDataset):
 
     def get_input_cloth_path(self, index):
         cloth_name = self.get_input_cloth_name(index)
-        cloth_path = osp.join(self.root, "all", cloth_name)
+        subdir = "all" if self.stage == "GMM" else "warp-cloth"
+        cloth_path = osp.join(self.root, subdir, cloth_name)
         return cloth_path
 
     ########################

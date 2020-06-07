@@ -29,7 +29,7 @@ Move these directories into our own dataroot ```data```.
 
 You can get the processed data at [GoogleDrive](https://drive.google.com/open?id=1MxCUvKxejnwWnoZ-KoCyMCXo3TLhRuTo) or by running:
 
-```
+```bash
 python data_download.py
 ```
 
@@ -49,25 +49,26 @@ git checkout viton_vvt_mpv
 ```
 Then train
 ```bash
+echo "Train CP-VTON GMM"; \
 python train.py \
 --name train_gmm_cp-vvt-mpv_$(date +"%Y-%m-%d_%H-%M-%S") \
---stage GMM 
+--stage GMM \
 --shuffle \
 --save_count 5000 \
 --dataset cp_vvt_mpv \
---dataroot ./data
+--dataroot ./data `# or /data_hdd/cp-vton/viton_processed` \
 --vvt_dataroot /data_hdd/vvt_competition \
 --mpv_dataroot /data_hdd/mpv_competition  \
 --workers 32 \
---gpu_ids 0,1,2,3,4,5,6,7
+--gpu_ids 0,1,2,3,4,5,6,7 \
 --batch_size 128
 ```
 You can see the results in tensorboard, as show below. 
-```
+```bash
 tensorboard --logdir tensorboard  # recommended to do this in a tmux window
 ```
 We can port forward the training like this
-```
+```bash
 echo "tensorboard connection"; ssh -N -L localhost:6006:localhost:6006 username@10.52.0.34
 ```
 <div align="center">
@@ -80,8 +81,18 @@ echo "tensorboard connection"; ssh -N -L localhost:6006:localhost:6006 username@
 Choose the different source data for eval with the option ```--datamode```.
 
 An example training command is
-```
-python test.py --name gmm_traintest_new --stage GMM --workers 4 --datamode test --data_list test_pairs.txt --checkpoint checkpoints/gmm_train_new/gmm_final.pth
+```bash
+DATAMODE="train" `# choose train or test` \
+python test.py \
+--name gmm_traintest_new \
+--stage GMM \
+--workers 4 \
+--datamode "$DATAMODE" \
+--dataset cp_vvt_mpv \
+--data_list "$DATAMODE"_pairs.txt \
+--vvt_dataroot /data_hdd/vvt_competition \
+--mpv_dataroot /data_hdd/mpv_competition \
+--checkpoint checkpoints/gmm_train_new/gmm_final.pth
 ```
 
 You can see the results in tensorboard, as show below.
@@ -94,11 +105,35 @@ You can see the results in tensorboard, as show below.
 ## Try-On Module
 ### training
 Before the trainning, you should generate warp-mask & warp-cloth, using the test process of GMM with `--datamode train`. 
-Then move these files or make soft links under the directory `data/train`.
+**Then move these files or make symlinks under the directory `data/train`.**
+```bash
+# Link CPDataset
+ln -s $(readlink -f ./results/"$CHECKPOINT"/CPDataset/warp-cloth) ./data/train/warp-cloth
+ln -s $(readlink -f ./results/"$CHECKPOINT"/CPDataset/warp-mask) ./data/train/warp-mask
+
+# Link VVTDataset
+ln -s $(readlink -f ./results/"$CHECKPOINT"/VVTDataset/warp-cloth) /data_hdd/vvt_competition
+
+# Link MPVDataset
+ln -s $(readlink -f ./results/"$CHECKPOINT"/MPVDataset/warp-cloth) /data_hdd/mpv_competition
+```
+
 An example training command is
 
-```
-python train.py --name tom_train_new --stage TOM --workers 4 --save_count 5000 --shuffle 
+```bash
+echo "Train CP-VTON TOM"; \
+python train.py \
+--name train_tom_cp-vvt-mpv_$(date +"%Y-%m-%d_%H-%M-%S") \
+--stage TOM \
+--shuffle \
+--save_count 5000 \
+--dataset cp_vvt_mpv \
+--dataroot ./data `# or /data_hdd/cp-vton/viton_processed` \
+--vvt_dataroot /data_hdd/vvt_competition \
+--mpv_dataroot /data_hdd/mpv_competition  \
+--workers 32 \
+--gpu_ids 0,1,2,3,4,5,6,7 \
+--batch_size 128
 ```
 You can see the results in tensorboard, as show below.
 
@@ -108,7 +143,7 @@ You can see the results in tensorboard, as show below.
 </div>
 
 
-### eavl
+### eval
 An example training command is
 
 ```
