@@ -34,11 +34,11 @@ class VVTDataset(data.Dataset):
 
         self.img_w = self.opt.fine_width
         self.img_h = self.opt.fine_height
+        torch.set_default_tensor_type(torch.cuda.FloatTensor)
 
         if opt.datamode == "train":
             self._keypoints_dir = osp.join(self.root, "lip_train_frames_keypoint")
             self._frames_dir = osp.join(self.root, "lip_train_frames")
-            self._schp_dir = osp.join(self.root)
         else:
             self._keypoints_dir = osp.join(self.root, "lip_test_frames_keypoint")
             self._frames_dir = osp.join(self.root, "lip_test_frames")
@@ -60,21 +60,7 @@ class VVTDataset(data.Dataset):
         self.keypoints.sort()
         print("length keypoints", len(self.keypoints))
         assert len(self.keypoints) > 0
-        self.to_tensor = transforms.Compose([transforms.ToTensor()])
-
-        """print("then")
-        self.data_list = []
-
-        for root_, dirs, files in os.walk(self.root):
-            arr = []
-            for file in files:
-                if file.endswith('.png'):
-                    arr.append(osp.join(self.root, root_, file))
-            self.data_list.append(arr)
-
-        self.data_list.pop(0)
-        self.data_list.sort()
-        #self.data_list.sort(key=lambda x: x[0].split("/")[4])"""
+        #p  self.to_tensor = transforms.Compose([transforms.ToTensor()])
 
     def get_target_frame(self, index):
         _pose_names = self.keypoints[index]
@@ -82,12 +68,14 @@ class VVTDataset(data.Dataset):
         for _pose_name in _pose_names:
             _pose_name = _pose_name.replace("_keypoints.json", ".png")
             just_folder_and_file = _pose_name.split("/")[-2:]
-            print("VVT Folder Name", just_folder_and_file[0])
+            #print("VVT Folder Name", just_folder_and_file[0])
             frame_path = osp.join(self._frames_dir, *just_folder_and_file)
             frame_image = Image.open(frame_path)
-            #plt.imshow(frame_image)
-            frame = self.to_tensor(frame_image)
+            #frame = self.to_tensor(frame_image)
+            frame = transforms.functional.to_tensor(frame_image)
+            frame = frame.type(torch.cuda.FloatTensor)
             frame = self._pad_width_up(frame)
+            assert frame.is_floating_point() and frame.is_cuda, "is floating point: " + str(frame.is_floating_point()) + "is cuda" + str(frame.is_cuda)
             frames.append(frame)
 
         return frames
@@ -96,18 +84,17 @@ class VVTDataset(data.Dataset):
         _schp_names = self.keypoints[index]
         frames = []
         for _schp_name in _schp_names:
-            #print(_schp_name)
             _schp_name = _schp_name.replace("_keypoints.json", ".png")
             just_folder_and_file = _schp_name.split("/")[-2:]
-            print("SCHP Folder Name", just_folder_and_file[0])
+            #print("SCHP Folder Name", just_folder_and_file[0])
             frame_path = osp.join(self._schp_dir, *just_folder_and_file)
             frame_image = Image.open(frame_path)
             frame_np = np.asarray(frame_image)
-            #print("frame_np:", np.unique(frame_np), frame_np.shape)
-            #plt.imshow(frame_image)
             frame = torch.from_numpy(frame_np)
+            frame = frame.type(torch.cuda.FloatTensor)
+
             frame = self._pad_width_up(frame)
-            #print("unique frame:", torch.unique(frame), frame.size())
+            assert frame.is_floating_point() and frame.is_cuda, "is floating point: " + str(frame.is_floating_point()) + "is cuda" + str(frame.is_cuda)
             frames.append(frame)
     
     
@@ -115,41 +102,26 @@ class VVTDataset(data.Dataset):
 
     def get_vibe_vid(self, index):
         _vibe_name = self.keypoints[index]
-
-        #print(_vibe_name)
-        #_vibe_name = _vibe_name.replace("_keypoints.json", ".pkl")
         just_folder = _vibe_name[0].split("/")[-2:-1]
         frame_path = osp.join(self._vibe_dir, *just_folder, "vid", "vibe_output.pkl")
 
-        # ++++++++++++++++++++++++++++
         vibe_output = joblib.load(frame_path)[1]
 
-        print("VIBE File Name", frame_path.split("/")[5])
+        #print("VIBE File Name", frame_path.split("/")[5])
         # print("VIBE File Name", vibe_fname)
         frame_ids = vibe_output['frame_ids']
         pose_params = vibe_output['pose']  # [frame_id] # (1, 72)
         body_shape_params = vibe_output['betas']  # [frame_id] # (1, 10)
         joints_3d = vibe_output['joints3d']  # [frame_id] # (1, 49, 3)
 
-        # mesh_verts = np.expand_dims(mesh_verts, axis=0)
-        # pose_params = np.expand_dims(pose_params, axis=0)
-        # body_shape_params = np.expand_dims(body_shape_params, axis=0)
+        #cuda = torch.device('cuda')  # Default CUDA device
+        pose_params = torch.tensor(pose_params)  # (1, 72)
+        body_shape_params = torch.tensor(body_shape_params)  # (1, 10)
+        joints_3d = torch.tensor(joints_3d)  # (1, 147)
+        assert pose_params.is_floating_point() and pose_params.is_cuda, "is floating point: " + str(pose_params.is_floating_point()) + "is cuda" + str(pose_params.is_cuda)
+        assert body_shape_params.is_floating_point() and body_shape_params.is_cuda, "is floating point: " + str(body_shape_params.is_floating_point()) + "is cuda" + str(body_shape_params.is_cuda)
+        assert joints_3d.is_floating_point() and joints_3d.is_cuda, "is floating point: " + str(joints_3d.is_floating_point()) + "is cuda" + str(joints_3d.is_cuda)
 
-        cuda = torch.device('cuda')  # Default CUDA device
-
-        # mesh_verts = torch.tensor(mesh_verts.ravel(), device=cuda)
-        # mesh_verts = torch.tensor(mesh_verts, device=cuda) # (1, 20670)
-        pose_params = torch.tensor(pose_params, device=cuda)  # (1, 72)
-        body_shape_params = torch.tensor(body_shape_params, device=cuda)  # (1, 10)
-        joints_3d = torch.tensor(joints_3d, device=cuda)  # (1, 147)
-
-        '''print("encoder")
-        x = Encoder(mesh_verts.shape[0], 256 * 192).cuda()
-        print(x)
-        out = x(mesh_verts)
-        print(out.shape)'''
-
-        # TODO: include encoding to get right size
         vibe_result = [
             frame_ids,
             pose_params,
@@ -174,7 +146,7 @@ class VVTDataset(data.Dataset):
                 pose_data = pose_data.reshape((-1, 3))
 
             point_num = pose_data.shape[0]  # how many pose joints
-            #assert point_num == 17, "should be 18 pose joints for guidedpix2pix"
+            assert point_num == 18, "should be 18 pose joints for guidedpix2pix"
             # construct an N-channel map tensor with -1
             pose_map = torch.zeros(point_num, self.img_h, self.img_w) - 1
 
@@ -189,6 +161,8 @@ class VVTDataset(data.Dataset):
             # add padding to the w/ h/
             pose_map = self._pad_width_up(pose_map, value=-1)# make the image 256x256
             #assert all(i == -1 or i == 1 for i in torch.unique(pose_map)), f"{torch.unique(pose_map)}"
+            assert pose_map.is_floating_point() and pose_map.is_cuda, "is floating point: " + str(pose_map.is_floating_point()) + "is cuda" + str(pose_map.is_cuda)
+            assert pose_map.dim() == 3, str(pose_map.size())
             pose_maps.append(pose_map)
 
         return pose_maps
@@ -197,7 +171,7 @@ class VVTDataset(data.Dataset):
         pose_name = self._keypoints[index]
         person_id = pose_name.split("/")[-2]
         folder = osp.join(self._clothes_person_dir, person_id)
-        print(folder)
+        #print(folder)
 
         files = os.listdir(folder)
         person_image_name = [f for f in files if f.endswith(".png")][0]
@@ -209,12 +183,12 @@ class VVTDataset(data.Dataset):
         pose_name = self._keypoints[index]
         person_id = pose_name.split("/")[-2]
         folder = osp.join(self._clothes_person_dir, person_id)
-        print(folder)
+        #print(folder)
 
         files = os.listdir(folder)
-        print(files)
+        #print(files)
         person_image_name = [f for f in files if f.endswith(".jpg")][0]
-        print(person_image_name)
+        #print(person_image_name)
         #assert person_image_name.endswith(".jpg"), f"person images should have .png extensions: {person_image_name}"
         return osp.join(folder, person_image_name)
 
@@ -232,23 +206,48 @@ class VVTDataset(data.Dataset):
         pers_image_path = self._get_input_person_path_from_index(index)
         person_image = Image.open(pers_image_path)
         #plt.imshow(person_image)
-        person_tensor = self.to_tensor(person_image)
+        #person_tensor = self.to_tensor(person_image)
+        person_tensor = transforms.functional.to_tensor(person_image)
+        person_tensor = person_tensor.type(torch.cuda.FloatTensor)
         person_tensor = self._pad_width_up(person_tensor)
+        assert person_tensor.is_floating_point() and person_tensor.is_cuda, "is floating point: " + str(person_tensor.is_floating_point()) + "is cuda" + str(person_tensor.is_cuda)
+
         return person_tensor
 
     def get_input_cloth(self, index):
         pers_cloth_path = self._get_input_cloth_path_from_index(index)
-        print(pers_cloth_path)
-        cloth_image = Image.open(pers_cloth_path)
+        #print(pers_cloth_path)
+        cloth_img = Image.open(pers_cloth_path)
         #plt.imshow(cloth_image)
-        cloth_tensor = self.to_tensor(cloth_image)
+        #cloth_tensor = self.to_tensor(cloth_image)
+        #cloth_tensor = transforms.functional.to_tensor(cloth_image)
+        """cloth_tensor = transforms.functional.to_tensor(cloth_image)
+        cloth_tensor = cloth_tensor.type(torch.cuda.FloatTensor)
+
         cloth_img = transforms.functional.to_pil_image(cloth_tensor)  # Image.fromarray(cloth_np).convert("L")
-        cloth_img = transforms.functional.to_grayscale(cloth_img)
+        cloth_img = transforms.functional.to_grayscale(cloth_img)"""
         cloth_np = np.array(cloth_img)
+        #print(cloth_np.shape)
+        cloth_tensor = torch.from_numpy(cloth_np)
+        cloth_tensor = cloth_tensor.type(torch.cuda.FloatTensor)
+        cloth_tensor = cloth_tensor.permute(2, 0, 1)
         cloth_mask = np.where(cloth_np > 240, 0, 255)
+
         cloth_mask = torch.from_numpy(cloth_mask)
-        cloth_mask = self._pad_width_up(cloth_mask)
+        cloth_mask = cloth_mask.type(torch.cuda.FloatTensor)
+        cloth_mask = cloth_mask.permute(2, 0, 1)
+
+        #cloth_tensor = torch.unsqueeze(cloth_tensor, 0)
+        #cloth_mask = torch.unsqueeze(cloth_mask, 0)
+        #cloth_mask = torch.stack((cloth_mask, cloth_mask, cloth_mask))
+        #print(cloth_mask.size())
         cloth_tensor = self._pad_width_up(cloth_tensor)
+
+        cloth_mask = self._pad_width_up(cloth_mask)
+        #assert 1 == 0, cloth_mask.size()
+        assert cloth_tensor.is_floating_point() and cloth_tensor.is_cuda, "is floating point: " + str(cloth_tensor.is_floating_point()) + "is cuda" + str(cloth_tensor.is_cuda)
+        assert cloth_mask.is_floating_point() and cloth_mask.is_cuda, "is floating point: " + str(cloth_mask.is_floating_point()) + "is cuda" + str(cloth_mask.is_cuda)
+
         return cloth_tensor, cloth_mask
 
     def generate_head(self, image_target, schp):
@@ -256,8 +255,8 @@ class VVTDataset(data.Dataset):
         for i in range(len(image_target)):
             image = image_target[i]
             cloth_seg = schp[i]
-            image = image.numpy()
-            cloth_seg = cloth_seg.numpy()
+            image = image.cpu().numpy()
+            cloth_seg = cloth_seg.cpu().numpy()
             FACE = 13
             HAIR = 2
             out = np.where(cloth_seg == FACE, 256, 0)
@@ -268,7 +267,9 @@ class VVTDataset(data.Dataset):
             mask = np.vstack((mask, mask, mask))
             head = np.where(image < mask, image, 255)
             head = torch.from_numpy(head)
+            head = head.type(torch.cuda.FloatTensor)
 
+            assert head.is_floating_point() and head.is_cuda, "is floating point: " + str(head.is_floating_point()) + "is cuda" + str(head.is_cuda)
 
             heads.append(head)
 
@@ -279,8 +280,8 @@ class VVTDataset(data.Dataset):
         for i in range(len(image_target)):
             image = image_target[i]
             cloth_seg = schp[i]
-            image = image.numpy()
-            cloth_seg = cloth_seg.numpy()
+            image = image.cpu().numpy()
+            cloth_seg = cloth_seg.cpu().numpy()
 
 
             mask = np.where(cloth_seg == 0, 256, 0)
@@ -288,6 +289,9 @@ class VVTDataset(data.Dataset):
             mask = np.vstack((mask, mask, mask))
             body_shape = np.where(image < mask, 0, 255)
             body_shape = torch.from_numpy(body_shape)
+            body_shape = body_shape.type(torch.cuda.FloatTensor)
+            assert body_shape.is_floating_point() and body_shape.is_cuda, "is floating point: " + str(body_shape.is_floating_point()) + "is cuda" + str(body_shape.is_cuda)
+
             body_shapes.append(body_shape)
 
         return body_shapes
@@ -310,7 +314,7 @@ class VVTDataset(data.Dataset):
             "body_shapes": body_shapes
         }
         """
-        print("index:", index)
+        #print("index:", index)
         image = self.get_input_person(index)  # (3, 256, 256)
         cloth, cloth_mask = self.get_input_cloth(index)   # (3, 256, 256)
 
@@ -329,33 +333,20 @@ class VVTDataset(data.Dataset):
         heads = self.generate_head(image_target, schp)
         body_shapes = self.generate_body_shape(image_target, schp)
 
-
-        # random fliping
-        # if (self.opt.isTrain):
-        #     x, x_target, pose, pose_target, mask, mask_target = self.randomFlip(x,
-        #                                                                         x_target,
-        #                                                                         pose,
-        #                                                                         pose_target,
-        #                                                                         mask,
-        #                                                                         mask_target)
-
         # input-guide-target
         input = (image / 255) * 2 - 1
-        print("input", len(input)) #  (3, 256, 256)
+        #print("input", len(input)) #  (3, 256, 256)
 
         guide = pose_target
-        print("pose", len(guide)) #  (frames, 3, 256, 256)
+        #print("pose", len(guide)) #  (frames, 3, 256, 256)
 
-
-        #target = (image_target / 255) * 2 - 1
         target = [(target_tensor/255) * 2 - 1 for target_tensor in image_target]
-        print("target", len(image_target))  # (frames, 3, 256, 256)
+        #print("target", len(image_target))  # (frames, 3, 256, 256)
         # Put data into [input, cloth, guide, target]
-        print("cloth_mask size", cloth_mask.size())
+        #print("cloth_mask size", cloth_mask.size())
 
         #assert cloth_mask.dim() == 4
 
-        #plt.show()
         vvt_result = {
             'input': input,
             "cloth": cloth,
@@ -438,212 +429,27 @@ def main():
     opt = get_opt()
 
     vvt = VVTDataset(opt)
+    for i in range(len(vvt)):
+        try:
+            pose_target = vvt.get_input_person_pose(i, target_width=256)
+        except IndexError as e:
+            print(e.__traceback__)
+            pose_target = torch.zeros(18, 256, 256)
 
-    print(opt)
-    print("Start to train stage: %s, named: %s!" % (opt.stage, opt.name))
+        for pose in pose_target:
 
-    # =====================================================================
-
-    # create dataset
-    cuda = torch.device('cuda')
-    vvt = VVTDataset(opt)
-    print("VVT Dataset Created. Length of dataset", len(vvt))
-    """schp = SCHPDataset(opt)
-    print("SCHP Dataset Created. Length of dataset", len(schp))
-    vibe = VIBEDataset(opt)
-    print("VIBE Dataset Created. Length of dataset", len(vibe))"""
-
-    # create dataloader
-
-    vvt_loader = torch.utils.data.DataLoader(
-        vvt, batch_size=opt.batch_size, shuffle=None,
-        num_workers=opt.workers, collate_fn=collate_fn_padd)
-    vvt_loader = iter(vvt_loader)
-    # criterion
-
-
-    # optimizer
-
-    '''
-    for each # step
-        for each # batch
-            from each # frame
-    '''
-
-    print("init train_gmm, ready to get into loop")
-
-    i = 0
-    for step in range(opt.keep_step + opt.decay_step):
-        print("Started step", step)
-        vvt_vid = vvt[i]
-        i += 1
-
-        input = vvt_vid['input']
-        cloth = vvt_vid['cloth'].to(cuda)
-        guide_path = vvt_vid['guide_path']
-        guide = vvt_vid['guide']
-        target = vvt_vid['target']
-        schp = vvt_vid['schp']
-        if opt.vibe:
-            vibe = vvt_vid['vibe']
-        heads = vvt_vid['heads']
-        cloth_mask = vvt_vid['cloth_mask']
-        # print("cloth_mask size", cloth_mask.size())
-        cloth_mask = torch.unsqueeze(cloth_mask, 0)
-        # print("cloth_mask size", cloth_mask.size())
-        #assert cloth_mask.dim() == 4
-        body_shapes = vvt_vid['body_shapes']
-        # print(len(schp))
-        # print(len(input))
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print(len(input), len(guide), len(target), len(schp), len(heads), cloth_mask.size(), len(body_shapes))
-        assert (len(target) == len(schp) == len(heads) == len(body_shapes))
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-
-        # unravel next batch
-        if opt.vibe:
-            frame_ids, pose_params, body_shape_params, joints_3d = vibe
-            "frame_ids, pose_params, body_shape_params, joints_3d = frame_ids[0], pose_params[0], body_shape_params[0], \
-                                                                   joints_3d[0]"
-
-            print("in vibe", type(frame_ids), len(frame_ids))
-            print("Basic Size as gotten from the VIBEDataset")
-            print("Frame IDs:", len(frame_ids), frame_ids)
-            print("Pose Parameters:", pose_params.size())
-            print("Body Shape Parameters:", body_shape_params.size())
-            print("Joints 3D Size:", joints_3d.size())
-        else:
-            frame_ids = [x for x in range(len(schp))]
-            print("not in vibe", type(frame_ids))
-
-        for index, frame in enumerate(frame_ids):
-            #print("frame:", len(frame_ids), frame)
-            # print("index:", index, "frame:", frame.item())
-
-            '''
-            Created in Algorithm # TODO: (need to create)
-            agnostic [pose, head, shape]
-            shape
-            head
-            cloth_mask
-
-            Passed into Algorithm # TODO: (find where it is and use input it)
-            cloth - from vvt -> (cloth)
-            image - from vvt -> (input)
-            parse_cloth - cloth segmentation? --> loaded through schp
-            pose_image - pose points? can we generate this 18 channel map? --> loaded through vvt
-            grid_image - just a png
-
-
-
-            '''
             try:
-                vvt_frame = target[frame]
-            except:
-                print("index:", index)
-                print("frame:", frame)
-                print(len(target), target[0].size())
-            schp_frame = schp[frame]
-            head = heads[frame]
-            body_shape = body_shapes[frame]
-            pose = guide[frame]
-            """print("vvt_frame:", vvt_frame.size(), vvt_frame.type())
-            print("schp_frame:", schp_frame.size(), schp_frame.type())
-            print("head:", head.size(), head.type())
-            print("body_shape:", body_shape.size(), body_shape.type())
-            print("pose:", pose.size(), pose.type())"""
-
-    """
-
-    input = out['input']
-    guide_path = out['guide_path']
-    guide = out["guide"]
-    target = out['target']
-    print(type(out))
-    print(out.keys())
-    print(type(input), type(guide_path), type(guide), type(target))
-    print(input.size(), len(guide_path), len(guide), len(target))"""
-    #plt.imshow(A.permute(1, 2, 0))
-    #plt.imshow(guide.permute(1, 2, 0))
-    #plt.imshow(B.permute(1, 2, 0))
-
-    #plt.show()
-
-    """print([x[0] for x in vvt.data_list])
-    vvt.data_list.sort()
-    print("###############################################################")
-    print("###############################################################")
-    print("###############################################################")
-    print("###############################################################")
-    print([x[0] for x in vvt.data_list])"""
-
-    """vibe = VIBEDataset(opt)
-    schp = VIBEDataset(opt)
-    vvt.data_list.sort()
-    schp.data_list.sort()
-    vibe.data_list.sort()
-
-    print(vvt.data_list[1][0].split("/")[4])
-    print(schp.data_list[1].split("/")[5])
-    print(vibe.data_list[1].split("/")[5])"""
+                assert pose.dim() == 3, str(pose.size()) + "\n" + str(pose) + "\n" + str(torch.unique(pose))
+            except AssertionError as e:
+                print(torch.unique(pose))
+                if torch.unique(pose).item() == 0:
+                    pose = torch.zeros(18, 256, 256)
+                else:
+                    raise
+            print("Pose Target:", pose.type(), pose.size())
 
 
 
-
-    #print(vvt.data_list)
-    #.sort(key=lambda x: x[0].split("/")[4])
-    """schp = SCHPDataset(opt)
-    vibe = VIBEDataset(opt)
-
-
-    #first_ = s[0]
-    #print(vvt[0])
-    vid_index = 0 # has to be from
-
-    vvt_output = vvt[vid_index]
-    schp_output = schp[vid_index]
-    vibe_output = vibe[vid_index]
-
-    print("VVT Info", len(vvt), type(vvt))
-    print("SCHP Info", len(schp), type(schp))
-    print("VIBE Info", len(vibe), type(vibe))
-
-    print("VVT Info", len(vvt_output))
-    print("SCHP Info", len(schp_output))
-    print("VIBE Info", len(vibe_output[0]))
-
-    frame_ids, pose_params, body_shape_params, joints_3d = vibe_output
-    frame_index = 50
-    offset = frame_ids[0]
-
-    print(frame_index + offset)
-    vvt_frame = vvt_output[frame_index]
-    schp_frame = schp_output[frame_index]
-
-    print("VVT Frame:", type(vvt_frame), vvt_frame.size())
-
-    print("SCHP Frame:", type(schp_frame), schp_frame.size())
-    plt.figure()
-
-    # subplot(r,c) provide the no. of rows and columns
-    f, axarr = plt.subplots(1, 2)
-
-    # use the created array to output your multiple images. In this case I have stacked 4 images vertically
-    axarr[0].imshow(vvt_frame)
-    axarr[1].imshow(schp_frame)
-    #plt.imshow(vibe_output[frame_index].permute(1, 2, 0))
-    plt.show()
-"""
-    #print(len(vibe_output))
-    #print(schp[0])
-
-
-
-    #print("first:", first_.size())
 
 if __name__ == '__main__':
     torch.multiprocessing.freeze_support()

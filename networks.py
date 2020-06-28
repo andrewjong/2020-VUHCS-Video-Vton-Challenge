@@ -426,6 +426,7 @@ class GMM(nn.Module):
         #print("after extraction", featureA.size(), featureB.size())
         featureA = self.l2norm(featureA)
         featureB = self.l2norm(featureB)
+        #print("after norm", featureA.size(), featureB.size())
         concat_features = torch.cat([featureA, featureB], 1)
         #print("after normalization", featureA.size(), featureB.size())
         correlation = self.correlation(concat_features)
