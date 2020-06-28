@@ -7,9 +7,6 @@ import argparse
 import os
 import time
 from PIL import Image
-from cp_dataset import CPDataLoader
-from data.vibe_dataset import VIBEDataset
-from data.schp import SCHPDataset
 from data.vvt_dataset import VVTDataset
 from networks import GMM, UnetGenerator, VGGLoss, load_checkpoint, save_checkpoint
 from encoder_modules import Encoder
@@ -17,6 +14,7 @@ from encoder_modules import Encoder
 from tensorboardX import SummaryWriter
 from visualization import board_add_image, board_add_images
 from multiprocessing import set_start_method
+from tqdm import tqdm
 
 
 
@@ -53,19 +51,16 @@ def get_opt():
 
 
 def train_gmm(opt, vvt_loader, model, board):
+    torch.set_default_tensor_type(torch.cuda.FloatTensor)
     model.cuda()
     model.train()
 
     vvt_loader = iter(vvt_loader)
-    # criterion
     criterionL1 = nn.L1Loss()
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr, betas=(0.5, 0.999))
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: 1.0 -
-                                                                                    max(0,
-                                                                                        step - opt.keep_step) / float(
-        opt.decay_step + 1))
+
     '''
     for each # step
         for each # batch
@@ -76,11 +71,10 @@ def train_gmm(opt, vvt_loader, model, board):
     im_g = Image.open("grid.png")
     im_g = np.array(im_g)
     im_g = torch.from_numpy(im_g)
+    im_g = im_g.type(torch.cuda.FloatTensor)
     im_g = torch.unsqueeze(im_g, 0)
-    im_g = im_g.type(torch.FloatTensor)
-    im_g = im_g.to(cuda)
-
-    for step in range(opt.keep_step + opt.decay_step):
+    pbar = tqdm(range(opt.keep_step + opt.decay_step), unit="step")
+    for step in pbar:
         print("Started step", step)
         iter_start_time = time.time()
         vvt_vid = next(vvt_loader)
@@ -88,7 +82,7 @@ def train_gmm(opt, vvt_loader, model, board):
 
 
         input = vvt_vid['input']
-        cloth = vvt_vid['cloth'].to(cuda)
+        cloth = vvt_vid['cloth']#.to(cuda)
         guide_path = vvt_vid['guide_path']
         guide = vvt_vid['guide']
         target = vvt_vid['target']
@@ -96,22 +90,20 @@ def train_gmm(opt, vvt_loader, model, board):
         if opt.vibe:
             vibe = vvt_vid['vibe']
         heads = vvt_vid['heads']
-        cloth_mask = vvt_vid['cloth_mask']
-        #print("cloth_mask size", cloth_mask.size())
-        cloth_mask = torch.unsqueeze(cloth_mask, 0)
-        #print("cloth_mask size", cloth_mask.size())
-        assert cloth_mask.dim() == 4
         body_shapes = vvt_vid['body_shapes']
-        #print(len(schp))
-        #print(len(input))
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        cloth_mask = vvt_vid['cloth_mask']
+        #cloth_mask = torch.unsqueeze(cloth_mask, 0)
+
+        #assert cloth_mask.dim() == 4
+
+        """print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print(len(input), len(guide), len(target), len(schp), len(heads), cloth_mask.size(), len(body_shapes) )
         assert (len(target) == len(schp) == len(heads) == len(body_shapes))
         print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")"""
 
 
         # unravel next batch
@@ -122,7 +114,7 @@ def train_gmm(opt, vvt_loader, model, board):
             frame_ids = [x for x in range(len(schp))]
 
         for index, frame in enumerate(frame_ids):
-            print("frame:", frame)
+            #print("frame:", frame)
             #print("index:", index, "frame:", frame.item())
 
             '''
@@ -138,16 +130,18 @@ def train_gmm(opt, vvt_loader, model, board):
             parse_cloth - cloth segmentation? --> loaded through schp
             pose_image - pose points? can we generate this 18 channel map? --> loaded through vvt
             grid_image - just a png
-            
-            
-                         
             '''
 
             vvt_frame = target[frame]
             schp_frame = schp[frame]
             head = heads[frame]
             body_shape = body_shapes[frame]
-            pose = guide[frame]
+            try:
+                pose = guide[frame]
+            except IndexError as e:
+                print(e.__traceback__)
+                pose = torch.zeros(1, 18, 256, 256)
+            print("Pose Target:", pose.size(), pose.type())
 
             if opt.vibe:
                 pose_param, body_shape_param, joint_3d = pose_params[index], body_shape_params[index], joints_3d[index]
@@ -177,6 +171,10 @@ def train_gmm(opt, vvt_loader, model, board):
                 out_joints_3d = torch.reshape(out_joints, (1, 1, 256, 256))
 
 
+
+
+
+            schp_frame = schp_frame.unsqueeze(0)
             '''
             Person Representation p
             ------------------------------------
@@ -188,14 +186,6 @@ def train_gmm(opt, vvt_loader, model, board):
             body_shape_param, from vibe (c, 256, 256)
             joint_3d, from vibe (c, 256, 256)
             '''
-
-            """[print(type(x), x.size(), x.dtype, x.type()) for x in [body_shape, head, pose, schp_frame, out_pose_param,
-                    out_body_shape_param, out_joints_3d]]"""
-
-            body_shape, schp_frame = body_shape.type(torch.FloatTensor), schp_frame.type(torch.FloatTensor)
-            schp_frame = schp_frame.unsqueeze(0)
-            body_shape, head, pose, schp_frame = body_shape.to(cuda), head.to(cuda), pose.to(cuda), schp_frame.to(cuda)
-
             if opt.vibe:
 
                 out_pose_param, out_body_shape_param, out_joints_3d = out_pose_param.to(cuda), out_body_shape_param.to(
@@ -211,47 +201,47 @@ def train_gmm(opt, vvt_loader, model, board):
                 p = torch.cat([body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d], 1)
             else:
 
-                if pose.dim() < 4:
+                """if pose.dim() < 4:
                     print("pose increase")
-                    pose = torch.unsqueeze(pose, 0)
-                [print(type(x), x.size(), x.dtype, x.type()) for x in
-                 [body_shape, head, pose, schp_frame]]
+                    pose = torch.unsqueeze(pose, 0)"""
+                """[print(type(x), x.size(), x.dtype, x.type()) for x in
+                 [body_shape, head, pose, schp_frame]]"""
+                assert body_shape.dim() == 4, body_shape.size()
+                assert head.dim() == 4, head.size()
+                try:
+                    assert pose.dim() == 4, str(pose.size()) + "\n" + str(torch.unique(pose))
+                except AssertionError as e:
+                    print(torch.unique(pose))
+                    if torch.unique(pose).item() == 0:
+                        pose = torch.zeros(1, 18, 256, 256)
+                    else:
+                        raise
+
+                assert schp_frame.dim() == 4, schp_frame.size()
 
                 p = torch.cat([body_shape, head, pose, schp_frame], 1)
 
-            cloth_mask = cloth_mask.type(torch.FloatTensor)
-            cloth_mask = cloth_mask.to(cuda)
-            #print("cloth mask", cloth_mask.type(), cloth_mask.size())
-            #print("finished person representation", p.size())
+            assert cloth.dim() == 4, cloth.size()
             grid, theta = model(p, cloth)
-            #print(grid, theta)
-            #print(type(grid), type(theta))
-            #print(grid.size(), theta.size())
 
             warped_cloth = F.grid_sample(cloth, grid, padding_mode='border')
             warped_mask = F.grid_sample(cloth_mask, grid, padding_mode='zeros')
             warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
 
-            """visuals = [[im_h, shape, im_pose],
-                       [c, warped_cloth, im_c],
-                       [warped_grid, (warped_cloth + im) * 0.5, im]]"""
+
 
             loss = criterionL1(warped_cloth, schp_frame)
-            print("calculated loss")
+            #print("calculated loss")
             optimizer.zero_grad()
-            print("zero grad")
+            #print("zero grad")
             torch.cuda.empty_cache()
-            print("empty cuda cache")
+            #print("empty cuda cache")
             loss.backward()
-            print("did backprop")
+            #print("did backprop")
             optimizer.step()
-            print("optimizer step")
+            #print("optimizer step")
 
-            """if (step + 1) % opt.display_count == 0:
-                board_add_images(board, 'combine', visuals, step + 1)
-                board.add_scalar('metric', loss.item(), step + 1)
-                t = time.time() - iter_start_time
-                print('step: %8d, time: %.3f, loss: %4f' % (step + 1, t, loss.item()), flush=True)"""
+
 
             if (step + 1) % opt.save_count == 0:
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'step_%06d.pth' % (step + 1)))
@@ -272,27 +262,15 @@ def main():
 
     vvt = VVTDataset(opt)
     print("VVT Dataset Created. Length of dataset", len(vvt))
-    """schp = SCHPDataset(opt)
-    print("SCHP Dataset Created. Length of dataset", len(schp))
-    vibe = VIBEDataset(opt)
-    print("VIBE Dataset Created. Length of dataset", len(vibe))"""
+
 
     # create dataloader
 
     vvt_loader = torch.utils.data.DataLoader(
         vvt, batch_size=opt.batch_size, shuffle=None,
         num_workers=opt.workers)
-    """schp_loader = torch.utils.data.DataLoader(
-        schp, batch_size=opt.batch_size, shuffle=None,
-        num_workers=opt.workers)
-    vibe_loader = torch.utils.data.DataLoader(
-        vibe, batch_size=opt.batch_size, shuffle=None,
-        num_workers=opt.workers)"""
-    '''vvt_loader = CPDataLoader(opt, vvt)
-    schp_loader = CPDataLoader(opt, schp)
-    vibe_loader = CPDataLoader(opt, vibe)'''
 
-    #dataloaders = [, schp_loader, vibe_loader]
+
     print("Dataloaders created.")
     # visualization
     if not os.path.exists(opt.tensorboard_dir):
