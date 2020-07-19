@@ -45,7 +45,7 @@ class VVTDataset(data.Dataset):
 
         self._schp_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "cloth")
         self._vibe_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "VIBE")
-
+        self._densepose_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "densepose")
         self._keypoints = glob('{}/**/*.json'.format(self._keypoints_dir))
 
         #print(type(self.keypoints), len(self.keypoints))
@@ -98,6 +98,24 @@ class VVTDataset(data.Dataset):
             frames.append(frame)
     
     
+        return frames
+
+    def get_densepose_frame(self, index):
+        _densepose_names = self.keypoints[index]
+        frames = []
+        for _densepose_name in _densepose_names:
+            _densepose_name = _densepose_name.replace("keypoints.json", "IUV.png")
+            just_folder_and_file = _densepose_name.split("/")[-2:]
+            # print("SCHP Folder Name", just_folder_and_file[0])
+            frame_path = osp.join(self._densepose_dir, *just_folder_and_file)
+            frame_image = Image.open(frame_path)
+            frame_np = np.asarray(frame_image)
+            frame = torch.from_numpy(frame_np)
+            frame = frame.type(torch.cuda.FloatTensor)
+            frame = self._pad_width_up(frame)
+            assert frame.is_floating_point() and frame.is_cuda, "is floating point: " + str(frame.is_floating_point()) + "is cuda" + str(frame.is_cuda)
+            frames.append(frame)
+
         return frames
 
     def get_vibe_vid(self, index):
@@ -166,6 +184,7 @@ class VVTDataset(data.Dataset):
             pose_maps.append(pose_map)
 
         return pose_maps
+
     def _get_input_person_path_from_index(self, index):
         """ Returns the path to the person image file that is used as input """
         pose_name = self._keypoints[index]
@@ -298,8 +317,6 @@ class VVTDataset(data.Dataset):
 
     def __getitem__(self, index):
 
-
-
         """
         Returns: <a dict> {
             'input': input,
@@ -332,7 +349,8 @@ class VVTDataset(data.Dataset):
             vibe = self.get_vibe_vid(index)
         heads = self.generate_head(image_target, schp)
         body_shapes = self.generate_body_shape(image_target, schp)
-
+        if self.opt.densepose:
+            densepose = self.get_densepose_frame(index)
         # input-guide-target
         input = (image / 255) * 2 - 1
         #print("input", len(input)) #  (3, 256, 256)
@@ -362,10 +380,10 @@ class VVTDataset(data.Dataset):
 
         if self.opt.vibe:
             vvt_result['vibe'] = vibe
+        if self.opt.densepose:
+            vvt_result['densepose'] = densepose
 
         return vvt_result
-
-
 
     def __len__(self):
         return len(self.keypoints)
@@ -397,7 +415,8 @@ def get_opt():
     parser.add_argument("--decay_step", type=int, default=100000)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     parser.add_argument("--grid_size", type=int, default=5)
-    parser.add_argument("--vibe", type=int, default=1)
+    parser.add_argument("--vibe", type=int, default=0)
+    parser.add_argument("--densepose", type=int, default=0)
 
     opt = parser.parse_args()
     return opt
