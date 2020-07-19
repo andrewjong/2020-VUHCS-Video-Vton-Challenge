@@ -30,7 +30,10 @@ dependencies:
   - ninja=1.8.2=py35h6bb024c_1
   - olefile=0.46=py35_0
   - openssl=1.0.2u=h7b6447c_0
+<<<<<<< HEAD
   - pip==20.1.1
+=======
+>>>>>>> fa65825de72a7074eee0861a1c1a3e9f1f4446c7
   - pycparser=2.19=py35_0
   - python=3.5.6=hc3d631a_0
   - pytorch=1.5.1=py3.5_cuda9.2.148_cudnn7.6.3_0
