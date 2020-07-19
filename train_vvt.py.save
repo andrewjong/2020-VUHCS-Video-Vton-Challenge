@@ -51,7 +51,6 @@ def get_opt():
 
 
 def train_gmm(opt, vvt_loader, model, board):
-    torch.cuda.set_device(1)
     torch.set_default_tensor_type(torch.cuda.FloatTensor)
     model.cuda()
     model.train()
@@ -67,7 +66,7 @@ def train_gmm(opt, vvt_loader, model, board):
         for each # batch
             from each # frame
     '''
-    cuda = torch.device('cuda:1')
+    cuda = torch.cuda.set_device('1')
     print("init train_gmm, ready to get into loop")
     im_g = Image.open("grid.png")
     im_g = np.array(im_g)
@@ -115,8 +114,8 @@ def train_gmm(opt, vvt_loader, model, board):
             frame_ids = [x for x in range(len(schp))]
 
         for index, frame in enumerate(frame_ids):
-            print("frame:", frame, "/", max(frame_ids))
-            print("index:", index, "frame:", frame.item())
+            #print("frame:", frame)
+            #print("index:", index, "frame:", frame.item())
 
             '''
             Created in Algorithm # TODO: (need to create)

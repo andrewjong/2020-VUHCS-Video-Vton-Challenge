@@ -34,14 +34,15 @@ class VVTDataset(data.Dataset):
 
         self.img_w = self.opt.fine_width
         self.img_h = self.opt.fine_height
+        torch.cuda.set_device(1)
         torch.set_default_tensor_type(torch.cuda.FloatTensor)
 
         if opt.datamode == "train":
             self._keypoints_dir = osp.join(self.root, "lip_train_frames_keypoint")
-            self._frames_dir = osp.join(self.root, "lip_train_frames")
+            self._frames_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "train_frames")
         else:
             self._keypoints_dir = osp.join(self.root, "lip_test_frames_keypoint")
-            self._frames_dir = osp.join(self.root, "lip_test_frames")
+            self._frames_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "test_frames")
 
         self._schp_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "cloth")
         self._vibe_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "VIBE")
