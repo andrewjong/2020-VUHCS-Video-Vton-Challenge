@@ -44,7 +44,8 @@ def get_opt():
     parser.add_argument("--decay_step", type=int, default=100000)
     parser.add_argument("--shuffle", action='store_true', help='shuffle input data')
     parser.add_argument("--grid_size", type=int, default = 5)
-    parser.add_argument("--vibe", type=int, default=1)
+    parser.add_argument("--vibe", type=int, default=0)
+    parser.add_argument("--densepose", type=int, default=0)
 
     opt = parser.parse_args()
     return opt
@@ -90,6 +91,8 @@ def train_gmm(opt, vvt_loader, model, board):
         schp = vvt_vid['schp']
         if opt.vibe:
             vibe = vvt_vid['vibe']
+        if opt.densepose:
+            densepose = vvt_vid['densepose']
         heads = vvt_vid['heads']
         body_shapes = vvt_vid['body_shapes']
         cloth_mask = vvt_vid['cloth_mask']
@@ -137,6 +140,8 @@ def train_gmm(opt, vvt_loader, model, board):
             schp_frame = schp[frame]
             head = heads[frame]
             body_shape = body_shapes[frame]
+            if opt.densepose:
+                densepose_frame = densepose[frame]
             try:
                 pose = guide[frame]
             except IndexError as e:
@@ -200,6 +205,21 @@ def train_gmm(opt, vvt_loader, model, board):
                   out_body_shape_param, out_joints_3d]]
 
                 p = torch.cat([body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d], 1)
+            elif opt.densepose:
+                assert body_shape.dim() == 4, body_shape.size()
+                assert head.dim() == 4, head.size()
+                try:
+                    assert pose.dim() == 4, str(pose.size()) + "\n" + str(torch.unique(pose))
+                except AssertionError as e:
+                    print(torch.unique(pose))
+                    if torch.unique(pose).item() == 0:
+                        pose = torch.zeros(1, 18, 256, 256)
+                    else:
+                        raise
+
+                assert schp_frame.dim() == 4, schp_frame.size()
+
+                p = torch.cat([body_shape, head, pose, schp_frame, densepose_frame], 1)
             else:
 
                 """if pose.dim() < 4:
