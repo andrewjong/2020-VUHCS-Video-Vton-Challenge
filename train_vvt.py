@@ -116,7 +116,7 @@ def train_gmm(opt, vvt_loader, model, board):
 
         for index, frame in enumerate(frame_ids):
             print("frame:", frame, "/", max(frame_ids))
-            print("index:", index, "frame:", frame.item())
+            print("index:", index, "frame:", frame)
 
             '''
             Created in Algorithm # TODO: (need to create)
