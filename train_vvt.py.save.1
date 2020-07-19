@@ -10,7 +10,7 @@ from PIL import Image
 from data.vvt_dataset import VVTDataset
 from networks import GMM, UnetGenerator, VGGLoss, load_checkpoint, save_checkpoint
 from encoder_modules import Encoder
-import matplotlib.pyplot as plt
+
 from tensorboardX import SummaryWriter
 from visualization import board_add_image, board_add_images
 from multiprocessing import set_start_method
@@ -52,9 +52,8 @@ def get_opt():
 
 
 def train_gmm(opt, vvt_loader, model, board):
-
-    torch.cuda.set_device(1)
-    torch.set_default_tensor_type(torch.cuda.FloatTensor)
+<<<<<<< HEAD
+    torch.cud    torch.set_default_tensor_type(torch.cuda.FloatTensor)
     model.cuda()
     model.train()
 
@@ -69,8 +68,11 @@ def train_gmm(opt, vvt_loader, model, board):
         for each # batch
             from each # frame
     '''
-
+<<<<<<< HEAD
     cuda = torch.device('cuda:1')
+=======
+    cuda = torch.device('cuda')
+>>>>>>> fa65825de72a7074eee0861a1c1a3e9f1f4446c7
     print("init train_gmm, ready to get into loop")
     im_g = Image.open("grid.png")
     im_g = np.array(im_g)
@@ -120,9 +122,13 @@ def train_gmm(opt, vvt_loader, model, board):
             frame_ids = [x for x in range(len(schp))]
 
         for index, frame in enumerate(frame_ids):
-
+<<<<<<< HEAD
             print("frame:", frame, "/", max(frame_ids))
             print("index:", index, "frame:", frame)
+=======
+            #print("frame:", frame)
+            #print("index:", index, "frame:", frame.item())
+>>>>>>> fa65825de72a7074eee0861a1c1a3e9f1f4446c7
 
             '''
             Created in Algorithm # TODO: (need to create)
@@ -252,8 +258,7 @@ def train_gmm(opt, vvt_loader, model, board):
             warped_mask = F.grid_sample(cloth_mask, grid, padding_mode='zeros')
             warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
 
-            """plt.plot(warped_cloth.detach().cpu().numpy().squeeze(0))
-            plt.show()"""
+
 
             loss = criterionL1(warped_cloth, schp_frame)
             #print("calculated loss")
