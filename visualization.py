@@ -18,6 +18,7 @@ def tensor_list_for_board(img_tensors_list):
     grid_w = max(len(img_tensors)  for img_tensors in img_tensors_list)
     
     batch_size, channel, height, width = tensor_for_board(img_tensors_list[0][0]).size()
+    #print(batch_size, channel, height, width)
     canvas_h = grid_h * height
     canvas_w = grid_w * width
     canvas = torch.FloatTensor(batch_size, channel, canvas_h, canvas_w).fill_(0.5)
@@ -25,6 +26,8 @@ def tensor_list_for_board(img_tensors_list):
         for j, img_tensor in enumerate(img_tensors):
             offset_h = i * height
             offset_w = j * width
+            #print("i", i)
+            #print("j", j)
             tensor = tensor_for_board(img_tensor)
             canvas[:, :, offset_h : offset_h + height, offset_w : offset_w + width].copy_(tensor)
 

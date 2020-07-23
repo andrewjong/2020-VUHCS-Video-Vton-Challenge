@@ -21,7 +21,7 @@ import torch
 from PIL import ImageDraw
 from PIL import Image
 from multiprocessing import set_start_method
-
+import traceback
 
 class VVTDataset(data.Dataset):
     def __init__(self, opt):
@@ -48,7 +48,7 @@ class VVTDataset(data.Dataset):
 
         self._schp_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "cloth")
         self._vibe_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "VIBE")
-        self._densepose_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "densepose")
+        self._densepose_dir = osp.join(self.opt.ann_dataroot, self.opt.datamode, "densepose_output")
         self._keypoints = glob('{}/**/*.json'.format(self._keypoints_dir))
 
         #print(type(self.keypoints), len(self.keypoints))
@@ -90,11 +90,17 @@ class VVTDataset(data.Dataset):
             _schp_name = _schp_name.replace("_keypoints.json", ".png")
             just_folder_and_file = _schp_name.split("/")[-2:]
             #print("SCHP Folder Name", just_folder_and_file[0])
-            frame_path = osp.join(self._schp_dir, *just_folder_and_file)
-            frame_image = Image.open(frame_path)
-            frame_np = np.asarray(frame_image)
-            frame = torch.from_numpy(frame_np)
-            frame = frame.type(torch.cuda.FloatTensor)
+            try:
+                frame_path = osp.join(self._schp_dir, *just_folder_and_file)
+                frame_image = Image.open(frame_path)
+                frame_np = np.asarray(frame_image)
+                frame = torch.from_numpy(frame_np)
+                frame = frame.type(torch.cuda.FloatTensor)
+                #print("schp", frame.size())
+            except FileNotFoundError as e:
+                print("schp traceback", e.__traceback__)
+                #traceback.print_tb(e.__traceback__)
+                frame = torch.zeros(256, 192)
 
             frame = self._pad_width_up(frame)
             assert frame.is_floating_point() and frame.is_cuda, "is floating point: " + str(frame.is_floating_point()) + "is cuda" + str(frame.is_cuda)
@@ -104,18 +110,31 @@ class VVTDataset(data.Dataset):
         return frames
 
     def get_densepose_frame(self, index):
+
         _densepose_names = self.keypoints[index]
         frames = []
         for _densepose_name in _densepose_names:
             _densepose_name = _densepose_name.replace("keypoints.json", "IUV.png")
             just_folder_and_file = _densepose_name.split("/")[-2:]
-            # print("SCHP Folder Name", just_folder_and_file[0])
+            #print("Densepose Folder Name", just_folder_and_file[0])
             frame_path = osp.join(self._densepose_dir, *just_folder_and_file)
-            frame_image = Image.open(frame_path)
-            frame_np = np.asarray(frame_image)
-            frame = torch.from_numpy(frame_np)
-            frame = frame.type(torch.cuda.FloatTensor)
-            frame = self._pad_width_up(frame)
+            try:
+                frame_image = Image.open(frame_path)
+                frame_np = np.asarray(frame_image)
+                frame = torch.from_numpy(frame_np)
+                frame = frame.permute(2, 0, 1)
+                frame = frame.type(torch.cuda.FloatTensor)
+                frame = self._pad_width_up(frame)
+            except FileNotFoundError as e:
+                print(e.__traceback__)
+                #if os.path.exists(os.path.join(self._schp_dir, *_densepose_name.replace("IUV.png", ".png").split("/")[-2:])):
+                #print("frame:", index)
+                frame = torch.zeros(3, 256, 256)
+
+
+
+            #assert 1 == 0, frame.shape
+
             assert frame.is_floating_point() and frame.is_cuda, "is floating point: " + str(frame.is_floating_point()) + "is cuda" + str(frame.is_cuda)
             frames.append(frame)
 
@@ -159,6 +178,7 @@ class VVTDataset(data.Dataset):
         # load pose points
         _pose_names = self.keypoints[index]
         pose_maps = []
+        im_poses = []
         for _pose_name in _pose_names:
             with open(_pose_name, 'r') as f:
                 pose_label = json.load(f)
@@ -170,6 +190,7 @@ class VVTDataset(data.Dataset):
             assert point_num == 18, "should be 18 pose joints for guidedpix2pix"
             # construct an N-channel map tensor with -1
             pose_map = torch.zeros(point_num, self.img_h, self.img_w) - 1
+            im_pose = torch.zeros(self.img_h, self.img_w)
 
             # draw a circle around the joint on the appropriate channel
             for i in range(point_num):
@@ -178,15 +199,18 @@ class VVTDataset(data.Dataset):
                 if pointx > 1 and pointy > 1:
                     rr, cc = draw.circle(pointy, pointx, self.radius, shape=(self.img_h, self.img_w))
                     pose_map[i, rr, cc] = 1
+                    im_pose[rr, cc] = 1
 
             # add padding to the w/ h/
             pose_map = self._pad_width_up(pose_map, value=-1)# make the image 256x256
+            im_pose = self._pad_width_up(im_pose)
             #assert all(i == -1 or i == 1 for i in torch.unique(pose_map)), f"{torch.unique(pose_map)}"
             assert pose_map.is_floating_point() and pose_map.is_cuda, "is floating point: " + str(pose_map.is_floating_point()) + "is cuda" + str(pose_map.is_cuda)
             assert pose_map.dim() == 3, str(pose_map.size())
             pose_maps.append(pose_map)
+            im_poses.append(im_pose)
 
-        return pose_maps
+        return pose_maps, im_poses
 
     def _get_input_person_path_from_index(self, index):
         """ Returns the path to the person image file that is used as input """
@@ -340,14 +364,20 @@ class VVTDataset(data.Dataset):
 
 
         #in index video, get keypoints
-        try:
-            pose_target = self.get_input_person_pose(index, target_width=256)  # (18, 256, 256)
-        except IndexError as e:
-            print(e.__traceback__)
-            pose_target = torch.zeros(18, 256, 256)
+
 
         image_target = self.get_target_frame(index)
+        print("image target", len(image_target))
         schp = self.get_schp_frame(index)
+        try:
+            pose_target, im_poses = self.get_input_person_pose(index, target_width=256)  # (18, 256, 256)
+            print(len(im_poses), im_poses[0].size(), len(pose_target), pose_target[0].size())
+        except IndexError as e:
+            print("pose traceback", e.__traceback__)
+            pose_target = [torch.zeros(18, 256, 256)]*len(image_target)
+            im_poses = [torch.zeros(256, 256)]*len(image_target)
+
+        print("schp", len(schp))
         if self.opt.vibe:
             vibe = self.get_vibe_vid(index)
         heads = self.generate_head(image_target, schp)
@@ -374,6 +404,7 @@ class VVTDataset(data.Dataset):
             "cloth_mask": cloth_mask,
             "guide_path": self.keypoints[index],
             'guide': guide,
+            "im_poses": im_poses,
             'target': target,
             "schp": schp,
             #"vibe": vibe,
@@ -385,6 +416,12 @@ class VVTDataset(data.Dataset):
             vvt_result['vibe'] = vibe
         if self.opt.densepose:
             vvt_result['densepose'] = densepose
+
+        for key in vvt_result.keys():
+            value = vvt_result[key]
+            print("yup", key, type(value), type(value[0]))
+            if isinstance(value[0], torch.Tensor):
+                print("yup", value[0].size())
 
         return vvt_result
 

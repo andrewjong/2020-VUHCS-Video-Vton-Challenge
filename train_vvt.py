@@ -58,7 +58,7 @@ def train_gmm(opt, vvt_loader, model, board):
     model.cuda()
     model.train()
 
-    vvt_loader = iter(vvt_loader)
+    #vvt_loader = iter(vvt_loader)
     criterionL1 = nn.L1Loss()
 
     # optimizer
@@ -81,194 +81,212 @@ def train_gmm(opt, vvt_loader, model, board):
     for step in pbar:
         print("Started step", step)
         iter_start_time = time.time()
-        vvt_vid = next(vvt_loader)
+        for i, vvt_vid in enumerate(vvt_loader):
+        #vvt_vid = next(vvt_loader)
+            print(i)
 
 
 
-        input = vvt_vid['input']
-        cloth = vvt_vid['cloth']#.to(cuda)
-        guide_path = vvt_vid['guide_path']
-        guide = vvt_vid['guide']
-        target = vvt_vid['target']
-        schp = vvt_vid['schp']
-        if opt.vibe:
-            vibe = vvt_vid['vibe']
-        if opt.densepose:
-            densepose = vvt_vid['densepose']
-        heads = vvt_vid['heads']
-        body_shapes = vvt_vid['body_shapes']
-        cloth_mask = vvt_vid['cloth_mask']
-        #cloth_mask = torch.unsqueeze(cloth_mask, 0)
-
-        #assert cloth_mask.dim() == 4
-
-        """print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print(len(input), len(guide), len(target), len(schp), len(heads), cloth_mask.size(), len(body_shapes) )
-        assert (len(target) == len(schp) == len(heads) == len(body_shapes))
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")"""
-
-
-        # unravel next batch
-        if opt.vibe:
-            frame_ids, pose_params, body_shape_params, joints_3d = vibe
-            frame_ids, pose_params, body_shape_params, joints_3d = frame_ids[0], pose_params[0], body_shape_params[0], joints_3d[0]
-        else:
-            frame_ids = [x for x in range(len(schp))]
-
-        for index, frame in enumerate(frame_ids):
-
-            print("frame:", frame, "/", max(frame_ids))
-            print("index:", index, "frame:", frame)
-
-            '''
-            Created in Algorithm # TODO: (need to create)
-            agnostic [pose, head, shape]
-            shape
-            head
-            cloth_mask
-            
-            Passed into Algorithm # TODO: (find where it is and use input it)
-            cloth - from vvt -> (cloth)
-            image - from vvt -> (input)
-            parse_cloth - cloth segmentation? --> loaded through schp
-            pose_image - pose points? can we generate this 18 channel map? --> loaded through vvt
-            grid_image - just a png
-            '''
-
-            vvt_frame = target[frame]
-            schp_frame = schp[frame]
-            head = heads[frame]
-            body_shape = body_shapes[frame]
+            input = vvt_vid['input']
+            cloth = vvt_vid['cloth']#.to(cuda)
+            guide_path = vvt_vid['guide_path']
+            guide = vvt_vid['guide']
+            im_poses = vvt_vid['im_poses']
+            target = vvt_vid['target']
+            schp = vvt_vid['schp']
+            if opt.vibe:
+                vibe = vvt_vid['vibe']
             if opt.densepose:
-                densepose_frame = densepose[frame]
-            try:
-                pose = guide[frame]
-            except IndexError as e:
-                print(e.__traceback__)
-                pose = torch.zeros(1, 18, 256, 256)
-            print("Pose Target:", pose.size(), pose.type())
+                densepose = vvt_vid['densepose']
+            heads = vvt_vid['heads']
+            body_shapes = vvt_vid['body_shapes']
+            cloth_mask = vvt_vid['cloth_mask']
+            #cloth_mask = torch.unsqueeze(cloth_mask, 0)
 
+            #assert cloth_mask.dim() == 4
+
+            """print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            print(len(input), len(guide), len(target), len(schp), len(heads), cloth_mask.size(), len(body_shapes) )
+            assert (len(target) == len(schp) == len(heads) == len(body_shapes))
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")"""
+
+
+            # unravel next batch
             if opt.vibe:
-                pose_param, body_shape_param, joint_3d = pose_params[index], body_shape_params[index], joints_3d[index]
-                pose_param, body_shape_param, joint_3d = pose_param.unsqueeze(0), body_shape_param.unsqueeze(0), joint_3d.unsqueeze(0)
-
-                joint_3d = torch.flatten(joint_3d, 1, 2)
-
-                pose_encoder = Encoder(pose_param.shape[1], 256 * 256).cuda()
-                pose_encoder.eval()
-                out_pose = pose_encoder(pose_param)
-                torch.cuda.empty_cache()
-
-                body_encoder = Encoder(body_shape_param.shape[1], 256 * 256).cuda()
-                body_encoder.eval()
-                out_body = body_encoder(body_shape_param)
-                torch.cuda.empty_cache()
-
-                # TODO: does this have to be different to run all three channels?
-
-                joints_encoder = Encoder(joint_3d.shape[1], 256 * 256).cuda()
-                joints_encoder.eval()
-                out_joints = joints_encoder(joint_3d)
-                torch.cuda.empty_cache()
-
-                out_pose_param = torch.reshape(out_pose, (1, 1, 256, 256))
-                out_body_shape_param = torch.reshape(out_body, (1, 1, 256, 256))
-                out_joints_3d = torch.reshape(out_joints, (1, 1, 256, 256))
-
-
-
-
-
-            schp_frame = schp_frame.unsqueeze(0)
-            '''
-            Person Representation p
-            ------------------------------------
-            shape, from cp-vton (1, 256, 256)
-            head, from cp-vton (2, 256, 256)
-            pose_map, from cp-vton (18, 256, 256)
-            schp_frame, from schp (c, 256, 256)
-            pose_param, from vibe (c, 256, 256)
-            body_shape_param, from vibe (c, 256, 256)
-            joint_3d, from vibe (c, 256, 256)
-            '''
-            if opt.vibe:
-
-                out_pose_param, out_body_shape_param, out_joints_3d = out_pose_param.to(cuda), out_body_shape_param.to(
-                    cuda), out_joints_3d.to(cuda)
-
-                for x in [body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d]:
-                    while(x.dim() < 4):
-                        x = torch.unsqueeze(x, 0)
-                [print(type(x), x.size(), x.dtype, x.type()) for x in
-                 [body_shape, head, pose, schp_frame, out_pose_param,
-                  out_body_shape_param, out_joints_3d]]
-
-                p = torch.cat([body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d], 1)
-            elif opt.densepose:
-                assert body_shape.dim() == 4, body_shape.size()
-                assert head.dim() == 4, head.size()
-                try:
-                    assert pose.dim() == 4, str(pose.size()) + "\n" + str(torch.unique(pose))
-                except AssertionError as e:
-                    print(torch.unique(pose))
-                    if torch.unique(pose).item() == 0:
-                        pose = torch.zeros(1, 18, 256, 256)
-                    else:
-                        raise
-
-                assert schp_frame.dim() == 4, schp_frame.size()
-
-                p = torch.cat([body_shape, head, pose, schp_frame, densepose_frame], 1)
+                frame_ids, pose_params, body_shape_params, joints_3d = vibe
+                frame_ids, pose_params, body_shape_params, joints_3d = frame_ids[0], pose_params[0], body_shape_params[0], joints_3d[0]
             else:
+                frame_ids = [x for x in range(len(schp))]
 
-                """if pose.dim() < 4:
-                    print("pose increase")
-                    pose = torch.unsqueeze(pose, 0)"""
-                """[print(type(x), x.size(), x.dtype, x.type()) for x in
-                 [body_shape, head, pose, schp_frame]]"""
-                assert body_shape.dim() == 4, body_shape.size()
-                assert head.dim() == 4, head.size()
+            for index, frame in enumerate(frame_ids):
+
+                #print("frame:", frame, "/", max(frame_ids))
+                #print("index:", index, "frame:", frame)
+
+                '''
+                Created in Algorithm # TODO: (need to create)
+                agnostic [pose, head, shape]
+                shape
+                head
+                cloth_mask
+                
+                Passed into Algorithm # TODO: (find where it is and use input it)
+                cloth - from vvt -> (cloth)
+                image - from vvt -> (input)
+                parse_cloth - cloth segmentation? --> loaded through schp
+                pose_image - pose points? can we generate this 18 channel map? --> loaded through vvt
+                grid_image - just a png
+                '''
+
+                vvt_frame = target[frame]
+                schp_frame = schp[frame]
+                head = heads[frame]
+                body_shape = body_shapes[frame]
+                im_pose = im_poses[frame]
+                if opt.densepose:
+                    densepose_frame = densepose[frame]
                 try:
-                    assert pose.dim() == 4, str(pose.size()) + "\n" + str(torch.unique(pose))
-                except AssertionError as e:
-                    print(torch.unique(pose))
-                    if torch.unique(pose).item() == 0:
-                        pose = torch.zeros(1, 18, 256, 256)
-                    else:
-                        raise
+                    pose = guide[frame]
+                except IndexError as e:
+                    print(e.__traceback__)
+                    pose = torch.zeros(1, 18, 256, 256)
+                #print("Pose Target:", pose.size(), pose.type())
 
-                assert schp_frame.dim() == 4, schp_frame.size()
+                if opt.vibe:
+                    pose_param, body_shape_param, joint_3d = pose_params[index], body_shape_params[index], joints_3d[index]
+                    pose_param, body_shape_param, joint_3d = pose_param.unsqueeze(0), body_shape_param.unsqueeze(0), joint_3d.unsqueeze(0)
 
-                p = torch.cat([body_shape, head, pose, schp_frame], 1)
+                    joint_3d = torch.flatten(joint_3d, 1, 2)
 
-            assert cloth.dim() == 4, cloth.size()
-            grid, theta = model(p, cloth)
+                    pose_encoder = Encoder(pose_param.shape[1], 256 * 256).cuda()
+                    pose_encoder.eval()
+                    out_pose = pose_encoder(pose_param)
+                    torch.cuda.empty_cache()
 
-            warped_cloth = F.grid_sample(cloth, grid, padding_mode='border')
-            warped_mask = F.grid_sample(cloth_mask, grid, padding_mode='zeros')
-            warped_grid = F.grid_sample(im_g, grid, padding_mode='zeros')
+                    body_encoder = Encoder(body_shape_param.shape[1], 256 * 256).cuda()
+                    body_encoder.eval()
+                    out_body = body_encoder(body_shape_param)
+                    torch.cuda.empty_cache()
 
-            """plt.plot(warped_cloth.detach().cpu().numpy().squeeze(0))
-            plt.show()"""
+                    # TODO: does this have to be different to run all three channels?
 
-            loss = criterionL1(warped_cloth, schp_frame)
-            #print("calculated loss")
-            optimizer.zero_grad()
-            #print("zero grad")
-            torch.cuda.empty_cache()
-            #print("empty cuda cache")
-            loss.backward()
-            #print("did backprop")
-            optimizer.step()
-            #print("optimizer step")
+                    joints_encoder = Encoder(joint_3d.shape[1], 256 * 256).cuda()
+                    joints_encoder.eval()
+                    out_joints = joints_encoder(joint_3d)
+                    torch.cuda.empty_cache()
+
+                    out_pose_param = torch.reshape(out_pose, (1, 1, 256, 256))
+                    out_body_shape_param = torch.reshape(out_body, (1, 1, 256, 256))
+                    out_joints_3d = torch.reshape(out_joints, (1, 1, 256, 256))
 
 
 
-            if (step + 1) % opt.save_count == 0:
+
+
+                schp_frame = schp_frame.unsqueeze(1)
+                '''
+                Person Representation p
+                ------------------------------------
+                shape, from cp-vton (1, 256, 256)
+                head, from cp-vton (2, 256, 256)
+                pose_map, from cp-vton (18, 256, 256)
+                schp_frame, from schp (c, 256, 256)
+                pose_param, from vibe (c, 256, 256)
+                body_shape_param, from vibe (c, 256, 256)
+                joint_3d, from vibe (c, 256, 256)
+                '''
+                if opt.vibe:
+
+                    out_pose_param, out_body_shape_param, out_joints_3d = out_pose_param.to(cuda), out_body_shape_param.to(
+                        cuda), out_joints_3d.to(cuda)
+
+                    for x in [body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d]:
+                        while(x.dim() < 4):
+                            x = torch.unsqueeze(x, 0)
+                    [print(type(x), x.size(), x.dtype, x.type()) for x in
+                     [body_shape, head, pose, schp_frame, out_pose_param,
+                      out_body_shape_param, out_joints_3d]]
+
+                    p = torch.cat([body_shape, head, pose, schp_frame, out_pose_param, out_body_shape_param, out_joints_3d], 1)
+                elif opt.densepose:
+                    assert body_shape.dim() == 4, body_shape.size()
+                    assert head.dim() == 4, head.size()
+                    try:
+                        assert pose.dim() == 4, str(pose.size()) + "\n" + str(torch.unique(pose))
+                    except AssertionError as e:
+                        print(torch.unique(pose))
+                        if torch.unique(pose).item() == 0:
+                            pose = torch.zeros(1, 18, 256, 256)
+                        else:
+                            raise
+
+                    assert schp_frame.dim() == 4, schp_frame.size()
+
+                    [print(type(x), x.size(), x.dtype, x.type()) for x in
+                     [body_shape, head, pose, schp_frame,densepose_frame]]
+
+                    p = torch.cat([body_shape, head, pose, schp_frame, densepose_frame], 1)
+                else:
+
+                    """if pose.dim() < 4:
+                        print("pose increase")
+                        pose = torch.unsqueeze(pose, 0)"""
+                    """[print(type(x), x.size(), x.dtype, x.type()) for x in
+                     [body_shape, head, pose, schp_frame]]"""
+                    assert body_shape.dim() == 4, body_shape.size()
+                    assert head.dim() == 4, head.size()
+                    try:
+                        assert pose.dim() == 4, str(pose.size()) + "\n" + str(torch.unique(pose))
+                    except AssertionError as e:
+                        print(torch.unique(pose))
+                        if torch.unique(pose).item() == 0:
+                            pose = torch.zeros(opt.batch_size, 18, 256, 256)
+                        else:
+                            raise
+
+                    assert schp_frame.dim() == 4, schp_frame.size()
+
+                    p = torch.cat([body_shape, head, pose, schp_frame], 1)
+
+                assert cloth.dim() == 4, cloth.size()
+                grid, theta = model(p, cloth)
+
+                warped_cloth = F.grid_sample(cloth, grid, padding_mode='border')
+                warped_mask = F.grid_sample(cloth_mask, grid, padding_mode='zeros')
+                warped_grid = F.grid_sample(im_g.repeat(opt.batch_size, 1, 1, 1), grid, padding_mode='zeros')
+
+                """plt.plot(warped_cloth.detach().cpu().numpy().squeeze(0))
+                plt.show()"""
+
+                loss = criterionL1(warped_cloth, schp_frame)
+                #print("calculated loss")
+                optimizer.zero_grad()
+                #print("zero grad")
+                torch.cuda.empty_cache()
+                #print("empty cuda cache")
+                loss.backward()
+                #print("did backprop")
+                optimizer.step()
+                #print("optimizer step")
+
+                visuals = [
+                    [head, body_shape, im_pose.unsqueeze(1)],
+                    [cloth, warped_cloth, schp_frame],
+                    [torch.zeros(opt.batch_size, 1, 256, 256), (warped_cloth + vvt_frame) * 0.5, vvt_frame],
+                ]
+                flat_visuals = [item for sublist in visuals for item in sublist]
+                [print(x.size()) for x in flat_visuals]
+                pbar.set_description(f"loss: {loss.item():4f}")
+                if board:
+                    #print("in")
+                    board_add_images(board, "combine", visuals, step + 1)
+                    board.add_scalar("metric", loss.item(), step + 1)
+                    tqdm.write(f'step: {step + 1:8d}, loss: {loss.item():4f}')
+
                 save_checkpoint(model, os.path.join(opt.checkpoint_dir, opt.name, 'step_%06d.pth' % (step + 1)))
 
 
@@ -288,11 +306,28 @@ def main():
     vvt = VVTDataset(opt)
     print("VVT Dataset Created. Length of dataset", len(vvt))
 
+    """for vvt_vid in vvt:
+        input = vvt_vid['input']
+        cloth = vvt_vid['cloth']  # .to(cuda)
+        guide_path = vvt_vid['guide_path']
+        guide = vvt_vid['guide']
+        im_poses = vvt_vid['im_poses']
+        target = vvt_vid['target']
+        schp = vvt_vid['schp']
+        if opt.vibe:
+            vibe = vvt_vid['vibe']
+        if opt.densepose:
+            densepose = vvt_vid['densepose']
+        heads = vvt_vid['heads']
+        body_shapes = vvt_vid['body_shapes']
+        cloth_mask = vvt_vid['cloth_mask']
+        print('*********')
+        [print(type(x), type(x[0])) for x in [input, cloth, guide_path, guide, im_poses, target, schp, densepose, heads, body_shapes, cloth_mask]]"""
 
     # create dataloader
 
     vvt_loader = torch.utils.data.DataLoader(
-        vvt, batch_size=opt.batch_size, shuffle=None,
+        vvt, batch_size=opt.batch_size, shuffle=True,
         num_workers=opt.workers)
 
 

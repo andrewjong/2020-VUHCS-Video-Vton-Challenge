@@ -409,7 +409,9 @@ class GMM(nn.Module):
     def __init__(self, opt):
         super(GMM, self).__init__()
         input_c = 25
-        if opt.vibe:
+        if opt.vibe and opt.densepose:
+            input_c = 31
+        elif opt.vibe or opt.densepose:
             input_c = 28
         self.extractionA = FeatureExtraction(input_c, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d)
         self.extractionB = FeatureExtraction(3, ngf=64, n_layers=3, norm_layer=nn.BatchNorm2d)
