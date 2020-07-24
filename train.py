@@ -26,6 +26,7 @@ def get_opt():
 
     parser.add_argument("--dataroot", default="data")
     parser.add_argument("--vvt_dataroot", default="/data_hdd/vvt_competition")
+    parser.add_argument("--vvt_ann_dataroot", default="/data_hdd/fw_gan_vvt")
     parser.add_argument("--mpv_dataroot", default="/data_hdd/mpv_competition")
     parser.add_argument("--datamode", default="train")
     parser.add_argument(
@@ -67,7 +68,7 @@ def get_opt():
 
 
 def train_gmm(opt, train_loader, model, board):
-    device = torch.device("cuda:0")
+    device = torch.device("cuda:1")
     model.to(device)
     #model.cuda()
     model.train()
@@ -214,7 +215,7 @@ def main():
 
     # create dataset
     train_dataset = get_dataset_class(opt.dataset)(opt)
-
+    assert len(train_dataset) > 0, print(len(train_dataset))
     # create dataloader
     train_loader = CPDataLoader(opt, train_dataset)
 

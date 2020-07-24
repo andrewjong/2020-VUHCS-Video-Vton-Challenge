@@ -28,8 +28,10 @@ class VVTDataset(CPDataset):
     def load_file_paths(self):
         """ Reads the datalist txt file for CP-VTON"""
         self.root = self.opt.vvt_dataroot  # override this
-        folder = f"lip_{self.opt.datamode}_frames"
-        self.image_names = sorted(glob(f"{self.root}/{folder}/**/*.png"))
+        folder = osp.join(self.opt.datamode, "cloth") # folder = f"lip_clothes_person"
+        self.image_names = sorted(glob(f"{self.opt.vvt_ann_dataroot}/{folder}/**/*.png"))
+        #print(self.image_names)
+
 
     @staticmethod
     def extract_folder_id(image_path):
@@ -85,13 +87,30 @@ class VVTDataset(CPDataset):
 
     def get_person_parsed_path(self, index):
         image_path = self.get_person_image_path(index)
-        folder = f"lip_{self.opt.datamode}_frames_parsing"
+        folder = osp.join(self.opt.datamode, "cloth")
         id = VVTDataset.extract_folder_id(image_path)
-        parsed_fname = os.path.split(image_path)[-1].replace(".png", "_label.png")
-        parsed_path = osp.join(self.root, folder, id, parsed_fname)
+        parsed_fname = os.path.split(image_path)[-1]
+        parsed_fname = parsed_fname.split('_')[:3]
+        parsed_fname = "_".join(parsed_fname) + ".png"
+        parsed_path = osp.join(self.opt.vvt_ann_dataroot, folder, id, parsed_fname)
+        print(parsed_path)
         if not os.path.exists(parsed_path):  # hacky, if it doesn't exist as _label, then try getting rid of it. did this to fix my specific bug in a time crunch
             parsed_path = parsed_path.replace("_label", "")
         return parsed_path
+
+    """
+        def get_person_parsed_path(self, index):
+        image_path = self.get_person_image_path(index)
+        
+        #folder = os.path.join(self.opt., )#f"lip_{self.opt.datamode}_frames_parsing"
+        id = VVTDataset.extract_folder_id(image_path)
+        parsed_fname = os.path.split(image_path)[-1].replace(".png", "_label.png")
+        #parsed_path = osp.join(self.opt.vvt_ann_dataroot, folder, id, parsed_fname)
+        print(parsed_path)
+        if not os.path.exists(parsed_path):  # hacky, if it doesn't exist as _label, then try getting rid of it. did this to fix my specific bug in a time crunch
+            parsed_path = parsed_path.replace("_label", "")
+        return parsed_path
+    """
 
     def get_input_person_pose_path(self, index):
         image_path = self.get_person_image_path(index)
