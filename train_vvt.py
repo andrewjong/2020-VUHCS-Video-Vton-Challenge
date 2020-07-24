@@ -101,18 +101,6 @@ def train_gmm(opt, vvt_loader, model, board):
             heads = vvt_vid['heads']
             body_shapes = vvt_vid['body_shapes']
             cloth_mask = vvt_vid['cloth_mask']
-            #cloth_mask = torch.unsqueeze(cloth_mask, 0)
-
-            #assert cloth_mask.dim() == 4
-
-            """print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            print(len(input), len(guide), len(target), len(schp), len(heads), cloth_mask.size(), len(body_shapes) )
-            assert (len(target) == len(schp) == len(heads) == len(body_shapes))
-            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")"""
 
 
             # unravel next batch
@@ -124,8 +112,7 @@ def train_gmm(opt, vvt_loader, model, board):
 
             for index, frame in enumerate(frame_ids):
 
-                #print("frame:", frame, "/", max(frame_ids))
-                #print("index:", index, "frame:", frame)
+
 
                 '''
                 Created in Algorithm # TODO: (need to create)
@@ -259,8 +246,7 @@ def train_gmm(opt, vvt_loader, model, board):
                 warped_mask = F.grid_sample(cloth_mask, grid, padding_mode='zeros')
                 warped_grid = F.grid_sample(im_g.repeat(opt.batch_size, 1, 1, 1), grid, padding_mode='zeros')
 
-                """plt.plot(warped_cloth.detach().cpu().numpy().squeeze(0))
-                plt.show()"""
+
 
                 loss = criterionL1(warped_cloth, schp_frame)
                 #print("calculated loss")
@@ -279,7 +265,7 @@ def train_gmm(opt, vvt_loader, model, board):
                     [torch.zeros(opt.batch_size, 1, 256, 256), (warped_cloth + vvt_frame) * 0.5, vvt_frame],
                 ]
                 flat_visuals = [item for sublist in visuals for item in sublist]
-                [print(x.size()) for x in flat_visuals]
+                #[print(x.size()) for x in flat_visuals]
                 pbar.set_description(f"loss: {loss.item():4f}")
                 if board:
                     #print("in")
@@ -306,30 +292,13 @@ def main():
     vvt = VVTDataset(opt)
     print("VVT Dataset Created. Length of dataset", len(vvt))
 
-    """for vvt_vid in vvt:
-        input = vvt_vid['input']
-        cloth = vvt_vid['cloth']  # .to(cuda)
-        guide_path = vvt_vid['guide_path']
-        guide = vvt_vid['guide']
-        im_poses = vvt_vid['im_poses']
-        target = vvt_vid['target']
-        schp = vvt_vid['schp']
-        if opt.vibe:
-            vibe = vvt_vid['vibe']
-        if opt.densepose:
-            densepose = vvt_vid['densepose']
-        heads = vvt_vid['heads']
-        body_shapes = vvt_vid['body_shapes']
-        cloth_mask = vvt_vid['cloth_mask']
-        print('*********')
-        [print(type(x), type(x[0])) for x in [input, cloth, guide_path, guide, im_poses, target, schp, densepose, heads, body_shapes, cloth_mask]]"""
 
-    # create dataloader
 
     vvt_loader = torch.utils.data.DataLoader(
         vvt, batch_size=opt.batch_size, shuffle=True,
         num_workers=opt.workers)
 
+    print("DataLoader length", len(vvt_loader))
 
     print("Dataloaders created.")
     # visualization
