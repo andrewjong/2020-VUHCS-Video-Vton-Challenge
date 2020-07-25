@@ -1,4 +1,5 @@
 from tensorboardX import SummaryWriter
+from tqdm import tqdm
 import torch
 from PIL import Image
 import os
@@ -9,7 +10,11 @@ def tensor_for_board(img_tensor):
     tensor.cpu().clamp(0,1)
 
     if tensor.size(1) == 1:
-        tensor = tensor.repeat(1,3,1,1)
+        try:
+            tensor = tensor.repeat(1,3,1,1)
+        except Exception as e:
+            print(tensor.type(), tensor.size())
+            raise e
 
     return tensor
 
@@ -18,7 +23,6 @@ def tensor_list_for_board(img_tensors_list):
     grid_w = max(len(img_tensors)  for img_tensors in img_tensors_list)
     
     batch_size, channel, height, width = tensor_for_board(img_tensors_list[0][0]).size()
-    #print(batch_size, channel, height, width)
     canvas_h = grid_h * height
     canvas_w = grid_w * width
     canvas = torch.FloatTensor(batch_size, channel, canvas_h, canvas_w).fill_(0.5)
@@ -26,8 +30,6 @@ def tensor_list_for_board(img_tensors_list):
         for j, img_tensor in enumerate(img_tensors):
             offset_h = i * height
             offset_w = j * width
-            #print("i", i)
-            #print("j", j)
             tensor = tensor_for_board(img_tensor)
             canvas[:, :, offset_h : offset_h + height, offset_w : offset_w + width].copy_(tensor)
 
@@ -46,8 +48,21 @@ def board_add_images(board, tag_name, img_tensors_list, step_count):
     for i, img in enumerate(tensor):
         board.add_image('%s/%03d' % (tag_name, i), img, step_count)
 
-def save_images(img_tensors, img_names, save_dir):
-    for img_tensor, img_name in zip(img_tensors, img_names):
+def get_save_paths(img_names, save_dirs):
+    return [os.path.join(s, i) for s, i in zip(save_dirs, img_names)]
+
+def save_images(img_tensors, img_names, save_dirs):
+    if len(save_dirs) == 1:
+        save_dirs = [save_dirs] * len(img_names)
+    for img_tensor, img_name, save_dir in zip(img_tensors, img_names, save_dirs):
+        if "warp-mask" in save_dir and "CPDataset" not in save_dir:
+            # if it's warp mask and we're not CPDataset, skip saving
+            continue
+        path = os.path.join(save_dir, img_name)
+        if os.path.exists(path):
+            # tqdm.write(f"Skipping {path}, already exists!")
+            continue
+
         tensor = (img_tensor.clone()+1)*0.5 * 255
         tensor = tensor.cpu().clamp(0,255)
 
@@ -56,6 +71,7 @@ def save_images(img_tensors, img_names, save_dir):
             array = array.squeeze(0)
         elif array.shape[0] == 3:
             array = array.swapaxes(0, 1).swapaxes(1, 2)
-            
-        Image.fromarray(array).save(os.path.join(save_dir, img_name))
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        Image.fromarray(array).save(path)
 
