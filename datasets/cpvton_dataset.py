@@ -38,6 +38,15 @@ class CpVtonDataset(ABC, data.Dataset):
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
         )
+        self.to_tensor_and_norm_gray = transforms.Compose(
+            [
+                self.center_crop,
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+
+
         self.image_names = []
         # load data list
         self.load_file_paths()
@@ -175,7 +184,7 @@ class CpVtonDataset(ABC, data.Dataset):
         _parse_shape = _parse_shape.resize(
             (self.fine_width, self.fine_height), Image.BILINEAR
         )
-        silhouette = self.to_tensor_and_norm(_parse_shape)  # [-1,1]
+        silhouette = self.to_tensor_and_norm_gray(_parse_shape)  # [-1,1]
         return silhouette
 
     def get_input_person_pose(self, index):
@@ -222,7 +231,7 @@ class CpVtonDataset(ABC, data.Dataset):
             r = self.radius
             for i in range(point_num):
                 one_map = Image.new("L", (self.fine_width, self.fine_height))
-                one_map_tensor = self.to_tensor_and_norm(one_map)
+                one_map_tensor = self.to_tensor_and_norm_gray(one_map)
                 pose_map[i] = one_map_tensor[0]
 
                 draw = ImageDraw.Draw(one_map)
@@ -240,7 +249,7 @@ class CpVtonDataset(ABC, data.Dataset):
                         "white",
                     )
         # just for visualization
-        im_pose = self.to_tensor_and_norm(im_pose)
+        im_pose = self.to_tensor_and_norm_gray(im_pose)
         return pose_map, im_pose
 
     @abstractmethod
