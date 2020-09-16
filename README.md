@@ -10,7 +10,7 @@ Reimplemented code for eccv2018 paper 'Toward Characteristic-Preserving Image-ba
 
 The results may have some differences with those of the original code.
 
-This code is tested with pytorch=0.4.0
+This code is tested with pytorch=1.4.0, torchvision=0.5.0 and CUDA=10.1. Install with `conda env create -f environmental.yml`.
 
 ## Data preprocessing
 <details>

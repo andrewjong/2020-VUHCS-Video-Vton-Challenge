@@ -34,6 +34,7 @@ class FwGanVVTDataset(CpVtonDataset):
         self.root = self.opt.vvt_dataroot  # override this
         folder = f"{self.opt.datamode}/{self.opt.datamode}_frames"
         self.image_names = sorted(glob(f"{self.root}/{folder}/**/*.png"))
+        # from IPython import embed; embed()
 
     @staticmethod
     def extract_folder_id(image_path):
@@ -71,27 +72,17 @@ class FwGanVVTDataset(CpVtonDataset):
         cloth_path_matches = sorted(glob(search))
         if len(cloth_path_matches) == 0:
             logger.debug(
-                f"{search=} not found, relaxing search to any cloth term. We should probably fix this later."
+                f"{search} not found, relaxing search to any cloth term. We should probably fix this later."
             )
             search = f"{cloth_folder}/{folder_id}-{cloth_id}*cloth*"
             cloth_path_matches = sorted(glob(search))
-            logger.debug(f"{search=} found {cloth_path_matches=}")
+            logger.debug(f"{search} found {cloth_path_matches}")
 
         assert (
                 len(cloth_path_matches) > 0
-        ), f"{search=} not found. Try specifying --warp_cloth_dir"
+        ), f"{search} not found. Try specifying --warp_cloth_dir"
 
         return cloth_path_matches[0]
-
-    #@overrides(CpVtonDataset)
-    def get_input_cloth_path(self, index):
-        image_path = self.image_names[index]
-        folder_id = FwGanVVTDataset.extract_folder_id(image_path)
-
-        subdir = "lip_clothes_person" if self.stage == "GMM" else "warp-cloth"
-        cloth_folder = osp.join(self.root, subdir, folder_id)
-        cloth_path = glob(f"{cloth_folder}/*cloth*")[0]
-        return cloth_path
 
     #@overrides(CpVtonDataset)
     def get_input_cloth_name(self, index):
